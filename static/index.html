@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EuroTrek — UK to Central Europe</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen">
+
+  <header class="bg-gray-900 border-b border-gray-800 px-6 py-4">
+    <div class="max-w-7xl mx-auto flex items-center gap-3">
+      <span class="text-2xl">✈️</span>
+      <h1 class="text-xl font-semibold tracking-tight">EuroTrek</h1>
+      <span class="text-gray-500 text-sm">UK → Central Europe</span>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-6 py-8">
+
+    <!-- Controls -->
+    <section class="bg-gray-900 rounded-xl border border-gray-800 p-6 mb-8">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+
+        <!-- Destinations -->
+        <div>
+          <label class="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Destinations</label>
+          <div class="flex flex-col gap-1.5" id="dest-checkboxes">
+            <label class="checkbox-label"><input type="checkbox" name="dest" value="PRG" checked /> Prague</label>
+            <label class="checkbox-label"><input type="checkbox" name="dest" value="BER" checked /> Berlin</label>
+            <label class="checkbox-label"><input type="checkbox" name="dest" value="MUC" checked /> Munich</label>
+            <label class="checkbox-label"><input type="checkbox" name="dest" value="VIE" checked /> Vienna</label>
+          </div>
+        </div>
+
+        <!-- UK Airports -->
+        <div>
+          <label class="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Departure airports</label>
+          <div class="flex flex-col gap-1.5" id="origin-checkboxes">
+            <label class="checkbox-label"><input type="checkbox" name="origin" value="LHR" checked /> LHR — Heathrow</label>
+            <label class="checkbox-label"><input type="checkbox" name="origin" value="LGW" checked /> LGW — Gatwick</label>
+            <label class="checkbox-label"><input type="checkbox" name="origin" value="STN" checked /> STN — Stansted</label>
+            <label class="checkbox-label"><input type="checkbox" name="origin" value="LTN" /> LTN — Luton</label>
+            <label class="checkbox-label"><input type="checkbox" name="origin" value="LCY" /> LCY — City</label>
+            <label class="checkbox-label"><input type="checkbox" name="origin" value="MAN" checked /> MAN — Manchester</label>
+            <label class="checkbox-label"><input type="checkbox" name="origin" value="EDI" /> EDI — Edinburgh</label>
+            <label class="checkbox-label"><input type="checkbox" name="origin" value="BHX" /> BHX — Birmingham</label>
+            <label class="checkbox-label"><input type="checkbox" name="origin" value="BRS" /> BRS — Bristol</label>
+          </div>
+        </div>
+
+        <!-- Date range + Sort -->
+        <div class="flex flex-col gap-5">
+          <div>
+            <label class="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">
+              Days out: <span id="days-label">1 – 10</span>
+            </label>
+            <div class="flex gap-2 items-center">
+              <input type="number" id="days-from" min="1" max="30" value="1"
+                class="w-16 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm" />
+              <span class="text-gray-500">to</span>
+              <input type="number" id="days-to" min="1" max="30" value="10"
+                class="w-16 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Sort flights by</label>
+            <select id="sort-select" class="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm w-full">
+              <option value="price">Price (cheapest first)</option>
+              <option value="depart">Departure time</option>
+              <option value="duration">Duration</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Currency</label>
+            <select id="currency-select" class="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm w-full">
+              <option value="GBP">GBP £</option>
+              <option value="EUR">EUR €</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Search button + info -->
+        <div class="flex flex-col justify-between">
+          <div class="bg-gray-800 rounded-lg p-4 text-xs text-gray-400 leading-relaxed">
+            <p class="font-semibold text-gray-300 mb-1">Flight data</p>
+            <p>Powered by Amadeus for Developers. Results are cached for 1 hour to conserve API quota.</p>
+            <p class="mt-2 font-semibold text-gray-300">Train data</p>
+            <p>Via DB Hafas (unofficial). Prices often unavailable — links open bahn.de.</p>
+          </div>
+          <button id="search-btn"
+            class="mt-4 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-semibold
+                   rounded-lg px-6 py-3 transition-colors duration-150 flex items-center justify-center gap-2">
+            <span id="search-icon">🔍</span>
+            <span id="search-label">Search</span>
+          </button>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Status bar -->
+    <div id="status-bar" class="hidden mb-4 text-sm text-gray-400 flex items-center gap-2">
+      <span class="spinner"></span>
+      <span id="status-text">Searching…</span>
+    </div>
+
+    <!-- Error banner -->
+    <div id="error-banner" class="hidden mb-4 bg-red-900/40 border border-red-700 rounded-lg px-4 py-3 text-sm text-red-300"></div>
+
+    <!-- Results tabs -->
+    <div id="results-section" class="hidden">
+      <div class="flex gap-1 mb-4 border-b border-gray-800">
+        <button class="tab-btn active" data-tab="flights">✈ Flights <span id="flight-count" class="tab-count"></span></button>
+        <button class="tab-btn" data-tab="trains">🚆 Trains <span id="train-count" class="tab-count"></span></button>
+      </div>
+
+      <div id="tab-flights">
+        <div id="flights-container"></div>
+      </div>
+      <div id="tab-trains" class="hidden">
+        <div id="trains-container"></div>
+      </div>
+    </div>
+
+    <!-- Empty state -->
+    <div id="empty-state" class="text-center py-16 text-gray-600">
+      <div class="text-5xl mb-4">🗺️</div>
+      <p class="text-lg">Select your options above and click Search</p>
+    </div>
+
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

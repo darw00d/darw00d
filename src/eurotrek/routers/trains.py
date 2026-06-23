@@ -1,0 +1,72 @@
+from __future__ import annotations
+
+import asyncio
+from datetime import date, timedelta
+
+from fastapi import APIRouter, Query, Request
+
+from eurotrek.flights.constants import DESTINATIONS
+from eurotrek.models import Offer
+
+router = APIRouter()
+
+
+def _resolve_dates(days_param: str) -> list[date]:
+    today = date.today()
+    if ".." in days_param:
+        parts = days_param.split("..")
+        start = int(parts[0])
+        end = int(parts[1])
+        return [today + timedelta(days=i) for i in range(start, end + 1)]
+    elif "," in days_param:
+        return [today + timedelta(days=int(d)) for d in days_param.split(",")]
+    else:
+        n = int(days_param)
+        return [today + timedelta(days=i) for i in range(1, n + 1)]
+
+
+def _sort_offers(offers: list[Offer], sort: str) -> list[Offer]:
+    if sort == "depart":
+        return sorted(offers, key=lambda o: o.departure or date.min)
+    if sort == "duration":
+        return sorted(offers, key=lambda o: o.total_duration)
+    return sorted(offers, key=lambda o: (o.price_gbp is None, o.price_gbp or 0))
+
+
+@router.get("/trains")
+async def search_trains(
+    request: Request,
+    destinations: str = Query(default=",".join(DESTINATIONS.keys())),
+    days: str = Query(default="1..10"),
+    sort: str = Query(default="depart"),
+) -> dict:
+    hafas = request.app.state.hafas
+    dest_list = [d.strip().upper() for d in destinations.split(",") if d.strip()]
+    date_list = _resolve_dates(days)
+
+    combos = [
+        (dest, dep_date)
+        for dest in dest_list
+        for dep_date in date_list
+        if dest in DESTINATIONS
+    ]
+
+    async def fetch(dest: str, dep_date: date) -> list[Offer]:
+        try:
+            return await hafas.search_journeys(
+                destination_code=dest,
+                departure_date=dep_date,
+            )
+        except Exception:
+            return []
+
+    results_nested = await asyncio.gather(*[fetch(d, dt) for d, dt in combos])
+    all_offers: list[Offer] = [offer for sublist in results_nested for offer in sublist]
+    sorted_offers = _sort_offers(all_offers, sort)
+
+    return {
+        "offers": [o.to_dict() for o in sorted_offers],
+        "count": len(sorted_offers),
+        "destinations_searched": dest_list,
+        "dates_searched": [d.isoformat() for d in date_list],
+    }
