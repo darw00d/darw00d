@@ -29,7 +29,7 @@ def kill_enemy(game, enemy):
     reward = game.rng.randint(*enemy.reward)
     p.tickets += reward
     line = game.rng.choice(enemy.death_lines).format(name=enemy.name)
-    game.log.add(f"{line} +{reward} ticket closures.", "good")
+    game.log.add(f"{line} +{reward} ticket closure{'' if reward == 1 else 's'}.", "good")
     enemy.on_death(game)
 
 

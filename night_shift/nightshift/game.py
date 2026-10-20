@@ -3,7 +3,7 @@ headlessly and replayed from a seed."""
 
 import random
 
-from . import combat, config, entities, flavour, mapgen
+from . import combat, config, entities, flavour, items, mapgen
 
 
 class MessageLog:
@@ -35,6 +35,7 @@ class Game:
         self.state = "playing"      # playing | floor_done | dead | won
         self.cause = None           # (source, kind) when dead
         self.enemies = []
+        self.items = []
         self.visible = set()
         self.dist_map = {}
         self.current_room = None
@@ -63,6 +64,8 @@ class Game:
         self.current_room = None
         self.state = "playing"
         self.populate()
+        self.items = items.scatter(self.gmap, self.seed, self.floor,
+                                   {e.pos for e in self.enemies})
         self.log.add(self.rng.choice(flavour.FLOOR_INTROS).format(floor=self.floor), "info")
         self.update_view()
 
@@ -107,6 +110,12 @@ class Game:
                 return e
         return None
 
+    def item_at(self, x, y):
+        for it in self.items:
+            if it.x == x and it.y == y:
+                return it
+        return None
+
     def blocked(self, x, y):
         if not self.gmap.walkable(x, y):
             return True
@@ -135,13 +144,75 @@ class Game:
         tile = self.gmap.tile(nx, ny)
         if not self.gmap.walkable(nx, ny):
             if tile == mapgen.LOCKED:
-                self.log.add("The door is locked. A keypad blinks: 'ADMIN ONLY'.")
-            else:
-                return False
+                return self.try_unlock(nx, ny)
             return False
         p.x, p.y = nx, ny
         if tile == mapgen.LIFT:
             self.log.add("You're at the lift. Press E (or >) to head down.", "info")
+        self.pick_up()
+        return self.end_turn()
+
+    def try_unlock(self, x, y):
+        p = self.player
+        note = next((i for i in p.inventory if i.key == "password"), None)
+        if not note:
+            self.log.add("The door is locked. A keypad blinks: 'ADMIN ONLY'. "
+                         "Somebody must have the password written down...")
+            return False
+        p.inventory.remove(note)
+        room = self.gmap.locked_room
+        for rx, ry in (room.rim() if room else [(x, y)]):
+            if self.gmap.tile(rx, ry) == mapgen.LOCKED:
+                self.gmap.set(rx, ry, mapgen.DOOR)
+        self.log.add(f"You type in '{self.rng.choice(items.PASSWORDS)}' from the sticky note. "
+                     "It works. Of course it works.", "good")
+        return self.end_turn()
+
+    def pick_up(self):
+        p = self.player
+        it = self.item_at(p.x, p.y)
+        if not it:
+            return
+        if it.item is None:
+            p.tickets += it.tickets
+            self.items.remove(it)
+            self.log.add(f"You find {it.tickets} closed tickets someone forgot to claim. "
+                         "Yours now.", "money")
+        elif len(p.inventory) >= p.INVENTORY_SIZE:
+            self.log.add(f"You see a {it.item.name.lower()}, but your pockets are full.", "warn")
+        else:
+            p.inventory.append(it.item)
+            self.items.remove(it)
+            self.log.add(f"You pick up the {it.item.label.lower()}. "
+                         f"[{len(p.inventory)}] {it.item.desc}", it.item.color)
+
+    def use_item(self, index, direction=None):
+        if self.state != "playing" or not 0 <= index < len(self.player.inventory):
+            return False
+        if items.use(self, self.player.inventory[index], direction):
+            return self.end_turn()
+        return False
+
+    def lash(self, direction):
+        p = self.player
+        if self.state != "playing":
+            return False
+        if not p.weapon or p.weapon.key != "cable":
+            self.log.add("You need an ethernet cable equipped to lash things.")
+            return False
+        items.lash(self, direction)
+        return self.end_turn()
+
+    def drop_item(self, index):
+        p = self.player
+        if self.state != "playing" or not 0 <= index < len(p.inventory):
+            return False
+        if self.item_at(p.x, p.y) or self.gmap.tile(p.x, p.y) == mapgen.LIFT:
+            self.log.add("There's already something here. Find a cleaner patch of carpet.")
+            return False
+        item = p.inventory.pop(index)
+        self.items.append(items.FloorItem(p.x, p.y, item=item))
+        self.log.add(f"You drop the {item.name.lower()}.")
         return self.end_turn()
 
     def wait(self):
@@ -168,6 +239,8 @@ class Game:
 
     # ------------------------------------------------------------ turn loop
     def action_cost(self):
+        if self.player.wired:
+            return 70
         c = self.player.caffeine
         if c <= 0:
             return 180
@@ -178,6 +251,8 @@ class Game:
     def status_effects(self):
         p = self.player
         out = []
+        if p.wired:
+            out.append((f"WIRED ({p.wired})", "item"))
         if p.caffeine <= 0:
             out.append(("DECAFFEINATED", "bad"))
         elif p.caffeine < 30:
@@ -192,6 +267,13 @@ class Game:
     def tick_player_stats(self):
         """Per-turn upkeep: caffeine, slow regen, sanity side effects."""
         p = self.player
+        if p.wired:
+            p.wired -= 1
+            if not p.wired:
+                p.caffeine = max(0, p.caffeine - 45)
+                p.sanity = max(1, p.sanity - 8)
+                self.log.add("The energy drink wears off. You crash. Hard. (-45 Caffeine, -8 Sanity)",
+                             "bad")
         before = p.caffeine
         if self.turn % 2 == 0:
             p.caffeine = max(0, p.caffeine - 1)

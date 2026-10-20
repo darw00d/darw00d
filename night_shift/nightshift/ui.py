@@ -194,6 +194,9 @@ class UI:
             if 0 <= sx < view_w and 0 <= sy < view_h:
                 self.put(top + sy, left + sx, glyph, color)
 
+        for it in game.items:
+            if it.pos in game.visible:
+                draw(it.x, it.y, it.glyph, it.color)
         for x, y, glyph, color in game.extra_glyphs() if hasattr(game, "extra_glyphs") else ():
             draw(x, y, glyph, color)
         for e in game.enemies:
@@ -267,6 +270,13 @@ class UI:
                 return KEY_DIRS[key]
             if key in (ESC, ord("q"), ord("Q")):
                 return None
+
+    def ask_slot(self, game, prompt):
+        self.render(game, prompt)
+        key = self.get_key()
+        if ord("1") <= key <= ord("9"):
+            return key - ord("1")
+        return None
 
     def confirm(self, game, prompt):
         self.render(game, prompt + " (y/n)")

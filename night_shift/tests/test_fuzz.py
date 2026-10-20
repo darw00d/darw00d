@@ -4,7 +4,7 @@ import random
 
 from nightshift.game import Game
 
-ACTIONS = ["up", "down", "left", "right", "wait", "lift"]
+ACTIONS = ["up", "down", "left", "right", "wait", "lift", "use", "lash", "drop"]
 DIRS = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}
 
 
@@ -15,6 +15,12 @@ def drive(game, rng, action):
         game.wait()
     elif action == "lift":
         game.take_lift()
+    elif action == "use":
+        game.use_item(rng.randrange(9), rng.choice(list(DIRS.values())))
+    elif action == "lash":
+        game.lash(rng.choice(list(DIRS.values())))
+    elif action == "drop" and rng.random() < 0.2:
+        game.drop_item(rng.randrange(9))
 
 
 def play(seed, steps=600):

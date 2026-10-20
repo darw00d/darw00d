@@ -109,7 +109,7 @@ CERT_DEATH = [
 PHISH_DISGUISES = [
     ("$", "money", "a stack of ticket closures"),
     ("!", "coffee", "a cup of coffee"),
-    ("?", "item", "a sticky note"),
+    ("?", "warn", "a sticky note"),
 ]
 
 PHISH_REVEAL = [

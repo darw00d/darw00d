@@ -55,6 +55,9 @@ class Player(Actor):
         self.weapon = None
         self.tickets = 0
         self.kills = 0
+        self.wired = 0          # energy-drink turns remaining
+
+    INVENTORY_SIZE = 9
 
     @property
     def melee_damage(self):

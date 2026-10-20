@@ -60,12 +60,36 @@ class App:
                 game.wait()
             elif key in (ord("e"), ord("E"), ord(">")):
                 game.take_lift()
+            elif ord("1") <= key <= ord("9"):
+                self.use_item(game, key - ord("1"))
+            elif key in (ord("f"), ord("F")):
+                if game.player.weapon and game.player.weapon.key == "cable":
+                    d = u.ask_direction(game, "Lash which way? (arrows/WASD, Esc cancels)")
+                    if d:
+                        game.lash(d)
+                else:
+                    game.lash((0, 0))
+            elif key in (ord("x"), ord("X")):
+                slot = u.ask_slot(game, "Drop which item? (1-9, anything else cancels)")
+                if slot is not None:
+                    game.drop_item(slot)
             elif key == ord("?"):
                 u.text_screen(ui.HELP_LINES)
             elif key in (ord("q"), ord("Q")):
                 if u.confirm(game, "Abandon your shift?"):
                     return "quit"
         return game.state
+
+    def use_item(self, game, index):
+        inv = game.player.inventory
+        if index >= len(inv):
+            return
+        direction = None
+        if inv[index].needs_direction:
+            direction = self.ui.ask_direction(game, f"Aim the {inv[index].name.lower()} which way?")
+            if direction is None:
+                return
+        game.use_item(index, direction)
 
     def end_screen(self, game):
         lines = [("SHIFT OVER", "bad"), ("", "normal"),
