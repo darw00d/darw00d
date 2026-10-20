@@ -38,6 +38,8 @@ class Game:
         self.visible = set()
         self.dist_map = {}
         self.current_room = None
+        self.phantom = None
+        self.warned_sanity = False
         self.new_floor()
 
     # ------------------------------------------------------------ floors
@@ -66,11 +68,25 @@ class Game:
 
     def populate(self):
         frng = random.Random(f"{self.seed}:spawn:{self.floor}")
-        count = 2 + self.floor // 2
+        count = 3 + self.floor // 2
+        table = [(entities.AngryUser, 3), (entities.ExpiredCert, 3), (entities.RoguePrinter, 2)]
+        if self.floor >= 2:
+            table.append((entities.PhishingEmail, 2))
+        kinds, weights = zip(*table)
+        printers = 0
         for _ in range(count):
+            kind = frng.choices(kinds, weights)[0]
+            if kind is entities.RoguePrinter:
+                printers += 1
+                if printers > 2:
+                    kind = entities.AngryUser
             pos = self.random_spawn_tile(frng)
-            if pos:
-                self.enemies.append(entities.AngryUser(*pos))
+            if not pos:
+                continue
+            if kind is entities.PhishingEmail:
+                self.enemies.append(kind(*pos, frng.choice(flavour.PHISH_DISGUISES)))
+            else:
+                self.enemies.append(kind(*pos))
 
     def random_spawn_tile(self, rng, min_dist=7):
         start_room = self.gmap.room_at(*self.gmap.start)
@@ -112,6 +128,10 @@ class Game:
         if enemy:
             combat.player_melee(self, enemy)
             return self.end_turn()
+        if (nx, ny) in self.gmap.jams:
+            del self.gmap.jams[(nx, ny)]
+            self.log.add(self.rng.choice(flavour.JAM_CLEAR))
+            return self.end_turn()
         tile = self.gmap.tile(nx, ny)
         if not self.gmap.walkable(nx, ny):
             if tile == mapgen.LOCKED:
@@ -127,7 +147,7 @@ class Game:
     def wait(self):
         if self.state != "playing":
             return False
-        if self.rng.random() < 0.15:
+        if self.rng.random() < 0.05:
             self.log.add(self.rng.choice(flavour.WAIT), "dim")
         return self.end_turn()
 
@@ -148,7 +168,59 @@ class Game:
 
     # ------------------------------------------------------------ turn loop
     def action_cost(self):
+        c = self.player.caffeine
+        if c <= 0:
+            return 180
+        if c < 30:
+            return 140
         return config.ACTION_COST
+
+    def status_effects(self):
+        p = self.player
+        out = []
+        if p.caffeine <= 0:
+            out.append(("DECAFFEINATED", "bad"))
+        elif p.caffeine < 30:
+            out.append(("Sluggish", "warn"))
+        if p.sanity < 30:
+            out.append(("Hallucinating", "phish"))
+        return out
+
+    def extra_glyphs(self):
+        return [self.phantom] if self.phantom else []
+
+    def tick_player_stats(self):
+        """Per-turn upkeep: caffeine, slow regen, sanity side effects."""
+        p = self.player
+        before = p.caffeine
+        if self.turn % 2 == 0:
+            p.caffeine = max(0, p.caffeine - 1)
+        if before >= 30 > p.caffeine:
+            self.log.add(flavour.CAFFEINE_LOW, "warn")
+        if before > 0 == p.caffeine:
+            self.log.add(flavour.CAFFEINE_OUT, "bad")
+        if p.caffeine <= 0 and self.turn % 12 == 0:
+            self.log.add("Caffeine withdrawal headache. (-1 HP)", "bad")
+            combat.hurt_player(self, 1, "caffeine withdrawal")
+        elif p.caffeine > 0 and self.turn % 20 == 0:
+            p.hp = min(p.max_hp, p.hp + 1)
+        if self.turn % 30 == 0:
+            p.sanity = min(p.max_sanity, p.sanity + 1)
+        self.phantom = None
+        if p.sanity < 30:
+            if not self.warned_sanity:
+                self.log.add(flavour.SANITY_LOW, "phish")
+                self.warned_sanity = True
+            if self.rng.random() < 0.06:
+                self.log.add(self.rng.choice(flavour.HALLUCINATIONS), "phish")
+            if self.rng.random() < 0.15:
+                spots = [pos for pos in self.visible
+                         if self.gmap.tile(*pos) == mapgen.FLOOR and not self.blocked(*pos)]
+                if spots:
+                    x, y = self.rng.choice(sorted(spots))
+                    self.phantom = (x, y, self.rng.choice("UPce"), "angry")
+        else:
+            self.warned_sanity = False
 
     def end_turn(self):
         self.turn += 1
@@ -156,7 +228,14 @@ class Game:
         self.log.turn = self.turn
         p = self.player
         p.energy -= self.action_cost()
+        for pos in list(self.gmap.jams):
+            self.gmap.jams[pos] -= 1
+            if self.gmap.jams[pos] <= 0:
+                del self.gmap.jams[pos]
         self.update_view()
+        self.tick_player_stats()
+        for enemy in list(self.enemies):
+            enemy.observe(self)
         self.dist_map = self.gmap.distances_from(p.x, p.y)
         while p.energy < 0 and self.state == "playing":
             p.energy += p.speed

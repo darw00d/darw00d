@@ -6,7 +6,8 @@ from . import flavour
 def player_melee(game, enemy):
     dmg = game.rng.randint(*game.player.melee_damage)
     game.log.add(game.rng.choice(flavour.PLAYER_HIT).format(name=enemy.name) + f" ({dmg})")
-    damage_enemy(game, enemy, dmg)
+    if not damage_enemy(game, enemy, dmg):
+        enemy.on_hit_by_player(game)
 
 
 def damage_enemy(game, enemy, amount):

@@ -16,7 +16,7 @@ import pyte
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-KEYS = {"up": b"\x1b[A", "down": b"\x1b[B", "right": b"\x1b[C", "left": b"\x1b[D", "esc": b"\x1b"}
+KEYS = {"up": b"\x1bOA", "down": b"\x1bOB", "right": b"\x1bOC", "left": b"\x1bOD", "esc": b"\x1b"}
 
 
 class TUI:
