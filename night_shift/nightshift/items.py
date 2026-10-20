@@ -184,6 +184,7 @@ def scatter(gmap, seed, floor, occupied):
     rng = random.Random(f"{seed}:items:{floor}")
     out = []
     taken = set(occupied) | {gmap.start, gmap.lift}
+    boss = gmap.lift is None
 
     def spot(rooms):
         tiles = [p for r in rooms for p in r.interior()
@@ -202,7 +203,7 @@ def scatter(gmap, seed, floor, occupied):
             out.append(FloorItem(*p, item=item, tickets=tickets))
 
     consumables = ["coffee", "energy", "meal", "stress"]
-    for _ in range(rng.randint(3, 5)):
+    for _ in range(rng.randint(6, 8) if boss else rng.randint(3, 5)):
         drop(open_rooms, make(rng.choices(consumables, [4, 2, 2, 2])[0]))
     for room in open_rooms:
         if room.kind == "kitchen":

@@ -31,6 +31,7 @@ class Game:
         self.player = entities.Player()
         self.log = MessageLog()
         self.floor = start_floor
+        self.start_floor = start_floor
         self.turn = 0
         self.state = "playing"      # playing | floor_done | dead | won
         self.cause = None           # (source, kind) when dead
@@ -73,6 +74,14 @@ class Game:
 
     def populate(self):
         frng = random.Random(f"{self.seed}:spawn:{self.floor}")
+        if self.is_boss_floor:
+            hall = next(r for r in self.gmap.rooms if r.kind == "hall")
+            self.enemies.append(entities.ExchangeServer(*hall.center))
+            for _ in range(2):
+                pos = self.random_spawn_tile(frng)
+                if pos:
+                    self.enemies.append(entities.ExpiredCert(*pos))
+            return
         count = 3 + self.floor // 2
         table = [(entities.AngryUser, 3), (entities.ExpiredCert, 3), (entities.RoguePrinter, 2)]
         if self.floor >= 2:
@@ -116,6 +125,25 @@ class Game:
             if e.x == x and e.y == y:
                 return e
         return None
+
+    def add_floor_item(self, pos, item):
+        self.items.append(items.FloorItem(*pos, item=item))
+
+    def boss_defeated(self):
+        self.state = "won"
+        self.log.add("07:00. The day shift wanders in, holding coffees. "
+                     "'Quiet night?' they ask.", "good")
+
+    @property
+    def boss(self):
+        return next((e for e in self.enemies if isinstance(e, entities.ExchangeServer)), None)
+
+    def extra_glyphs(self):
+        out = [self.phantom] if self.phantom else []
+        boss = self.boss
+        if boss:
+            out += [(x, y, "*", "telegraph") for x, y in sorted(boss.marked)]
+        return out
 
     def item_at(self, x, y):
         for it in self.items:
@@ -232,6 +260,9 @@ class Game:
     def take_lift(self):
         if self.state != "playing":
             return False
+        if self.is_boss_floor:
+            self.log.add("The lift is out of service. Something in the data hall has seen to that.")
+            return False
         if self.player.pos != self.gmap.lift:
             self.log.add("There's no lift here. Just carpet, and regret.")
             return False
@@ -259,18 +290,19 @@ class Game:
     def status_effects(self):
         p = self.player
         out = []
+        boss = self.boss
+        if boss and boss.awake:
+            out.append((f"EXCHANGE {boss.hp}/{boss.max_hp} P{boss.phase}"
+                        + (" SHIELD" if boss.shield else ""), "boss"))
         if p.wired:
-            out.append((f"WIRED ({p.wired})", "item"))
+            out.append((f"WIRED {p.wired}", "item"))
         if p.caffeine <= 0:
-            out.append(("DECAFFEINATED", "bad"))
+            out.append(("DECAF", "bad"))
         elif p.caffeine < 30:
-            out.append(("Sluggish", "warn"))
+            out.append(("SLUGGISH", "warn"))
         if p.sanity < 30:
-            out.append(("Hallucinating", "phish"))
+            out.append(("HALLUCINATING", "phish"))
         return out
-
-    def extra_glyphs(self):
-        return [self.phantom] if self.phantom else []
 
     def tick_player_stats(self):
         """Per-turn upkeep: caffeine, slow regen, sanity side effects."""
@@ -283,18 +315,18 @@ class Game:
                 self.log.add("The energy drink wears off. You crash. Hard. (-45 Caffeine, -8 Sanity)",
                              "bad")
         before = p.caffeine
-        if self.turn % 2 == 0:
+        if self.turn % 3 == 0:
             p.caffeine = max(0, p.caffeine - 1)
         if before >= 30 > p.caffeine:
             self.log.add(flavour.CAFFEINE_LOW, "warn")
         if before > 0 == p.caffeine:
             self.log.add(flavour.CAFFEINE_OUT, "bad")
-        if p.caffeine <= 0 and self.turn % 12 == 0:
+        if p.caffeine <= 0 and self.turn % 15 == 0:
             self.log.add("Caffeine withdrawal headache. (-1 HP)", "bad")
             combat.hurt_player(self, 1, "caffeine withdrawal")
-        elif p.caffeine > 0 and self.turn % 20 == 0:
+        elif p.caffeine > 0 and self.turn % 15 == 0:
             p.hp = min(p.max_hp, p.hp + 1)
-        if self.turn % 30 == 0:
+        if self.turn % 20 == 0:
             p.sanity = min(p.max_sanity, p.sanity + 1)
         self.phantom = None
         if p.sanity < 30:
@@ -335,7 +367,7 @@ class Game:
                 enemy.energy += enemy.speed
                 while enemy.energy >= 0 and enemy in self.enemies and self.state == "playing":
                     enemy.energy -= config.ACTION_COST
-                    if enemy.stunned:
+                    if enemy.stunned and not enemy.stun_immune:
                         enemy.stunned -= 1
                     else:
                         enemy.take_turn(self)

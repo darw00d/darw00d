@@ -61,7 +61,7 @@ class Player(Actor):
 
     @property
     def melee_damage(self):
-        return self.weapon.damage if self.weapon else (1, 3)
+        return self.weapon.damage if self.weapon else (1, 4)
 
     @property
     def weapon_name(self):
@@ -69,6 +69,7 @@ class Player(Actor):
 
 
 class Enemy(Actor):
+    stun_immune = False
     damage = (1, 2)
     reward = (1, 2)            # ticket closures when killed
     attack_kind = "hp"         # or "sanity"
@@ -144,9 +145,9 @@ class AngryUser(Enemy):
     glyph = "U"
     color = "angry"
     name = "Angry User"
-    max_hp = 8
+    max_hp = 7
     speed = 11
-    damage = (4, 8)
+    damage = (3, 6)
     reward = (2, 4)
     attack_kind = "sanity"
     death_lines = flavour.ANGRY_USER_DEATH
@@ -174,7 +175,7 @@ class RoguePrinter(Enemy):
     reward = (3, 5)
     death_lines = flavour.PRINTER_DEATH
     fire_range = 7
-    reload = 3
+    reload = 4
 
     def __init__(self, x, y):
         super().__init__(x, y)
@@ -212,7 +213,7 @@ class RoguePrinter(Enemy):
         game.log.add(game.rng.choice(flavour.PRINTER_FIRE), "printer")
         if target and len(game.gmap.jams) < 30:
             game.gmap.jams[target] = game.rng.randint(15, 25)
-        if game.rng.random() < 0.4:
+        if game.rng.random() < 0.25:
             game.log.add("A sheet of A4 catches you edge-first. Papercut. (-1 HP)", "bad")
             combat.hurt_player(game, 1, "a papercut from a Rogue Printer")
 
@@ -227,8 +228,8 @@ class ExpiredCert(Enemy):
     damage = (1, 2)
     reward = (1, 1)
     death_lines = flavour.CERT_DEATH
-    split_every = 6
-    max_certs = 12
+    split_every = 7
+    max_certs = 10
 
     def __init__(self, x, y):
         super().__init__(x, y)
@@ -327,3 +328,155 @@ class PhishingEmail(Enemy):
         if self.stolen:
             game.player.tickets += self.stolen
             game.log.add(f"You recover {self.stolen} stolen ticket closures.", "good")
+
+
+class SpamEmail(Enemy):
+    """Fast, flimsy minion spawned by the Exchange server's mail storm."""
+    glyph = "s"
+    color = "spam"
+    name = "Spam Email"
+    max_hp = 2
+    speed = 14
+    damage = (1, 1)
+    reward = (0, 1)
+    death_lines = flavour.SPAM_DEATH
+
+    def take_turn(self, game):
+        self.awake = True
+        if self.adjacent_to_player(game):
+            self.melee(game, "The Spam Email offers you a great deal on printer ink.")
+        else:
+            self.chase(game)
+
+
+class ExchangeServer(Enemy):
+    """Final boss. Three phases keyed to its remaining HP."""
+    glyph = "X"
+    color = "boss"
+    name = "Sentient Exchange Server"
+    max_hp = 50
+    speed = 10
+    damage = (3, 5)
+    reward = (25, 25)
+    death_lines = flavour.BOSS_DEATH
+    stun_immune = True
+
+    def __init__(self, x, y):
+        super().__init__(x, y)
+        self.phase = 1
+        self.timer = 2
+        self.marked = set()       # telegraphed mail-storm tiles, land next turn
+        self.shield = False
+        self.shield_timer = 0
+        self.moved = False
+
+    @property
+    def current_phase(self):
+        frac = self.hp / self.max_hp
+        return 1 if frac > 2 / 3 else 2 if frac > 1 / 3 else 3
+
+    def on_spot(self, game):
+        game.log.add(flavour.BOSS_SPOT, "boss")
+        game.log.add(flavour.BOSS_PHASES[1], "warn")
+
+    def take_damage(self, game, amount):
+        if self.shield:
+            game.log.add(flavour.BOSS_SHIELD_HIT, "info")
+            return 0
+        self.hp -= amount
+        return amount
+
+    def on_death(self, game):
+        self.marked.clear()
+        game.boss_defeated()
+
+    def take_turn(self, game):
+        if not self.notice_player(game):
+            return
+        phase = self.current_phase
+        if phase != self.phase:
+            self.phase = phase
+            game.log.add(flavour.BOSS_PHASES[phase], "warn")
+            self.timer = 1
+            if phase == 3:
+                self.shield_timer = 0
+
+        self.land_storm(game)
+        if not game.player.alive:
+            return
+
+        if phase == 3:
+            self.shield_timer -= 1
+            if self.shield_timer <= 0:
+                self.shield = not self.shield
+                self.shield_timer = 4
+                game.log.add(flavour.BOSS_SHIELD_UP if self.shield else flavour.BOSS_SHIELD_DOWN,
+                             "info" if self.shield else "good")
+
+        self.timer -= 1
+        if self.timer <= 0:
+            if phase == 1:
+                self.timer = 3
+                self.start_storm(game, game.rng.randint(5, 7))
+                self.spawn_spam(game, 1)
+            elif phase == 2:
+                self.timer = 4
+                self.quota_attack(game)
+                self.start_storm(game, 4)
+            else:
+                self.timer = 3
+                self.start_storm(game, game.rng.randint(6, 9) if self.shield else 4)
+                self.spawn_spam(game, 1)
+            return
+
+        if self.adjacent_to_player(game):
+            self.melee(game, flavour.BOSS_MELEE)
+        elif phase >= 2:
+            # lumbers toward you every other turn
+            self.moved = not self.moved
+            if self.moved:
+                self.chase(game)
+
+    def start_storm(self, game, count):
+        p = game.player
+        near = [(p.x + dx, p.y + dy) for dx in range(-3, 4) for dy in range(-3, 4)
+                if game.gmap.walkable(p.x + dx, p.y + dy)]
+        game.rng.shuffle(near)
+        # always threaten the player's own tile so standing still is never safe
+        self.marked = {p.pos, *near[:count - 1]}
+        game.log.add(game.rng.choice(flavour.BOSS_STORM), "warn")
+
+    def land_storm(self, game):
+        if not self.marked:
+            return
+        hit = game.player.pos in self.marked
+        self.marked = set()
+        if hit:
+            dmg = game.rng.randint(3, 5)
+            game.log.add(f"{flavour.BOSS_STORM_HIT} (-{dmg} HP)", "bad")
+            combat.hurt_player(game, dmg, "a reply-all storm")
+
+    def spawn_spam(self, game, n):
+        if sum(isinstance(e, SpamEmail) for e in game.enemies) >= 4:
+            return
+        spots = [(self.x + dx, self.y + dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1)
+                 if not game.blocked(self.x + dx, self.y + dy)]
+        game.rng.shuffle(spots)
+        for pos in spots[:n]:
+            game.enemies.append(SpamEmail(*pos))
+
+    def quota_attack(self, game):
+        p = game.player
+        if p.inventory:
+            item = p.inventory.pop(game.rng.randrange(len(p.inventory)))
+            hall = next((r for r in game.gmap.rooms if r.kind == "hall"), None)
+            tiles = [t for t in (hall.interior() if hall else ())
+                     if game.gmap.tile(*t) == mapgen.FLOOR and not game.item_at(*t)
+                     and t != p.pos]
+            if tiles:
+                game.add_floor_item(game.rng.choice(tiles), item)
+            game.log.add(flavour.BOSS_ARCHIVE.format(item=item.name.lower()), "bad")
+            combat.hurt_player(game, 6, self.name, "sanity")
+        else:
+            game.log.add(flavour.BOSS_QUOTA_EMPTY, "bad")
+            combat.hurt_player(game, 10, self.name, "sanity")

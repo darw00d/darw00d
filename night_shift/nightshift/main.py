@@ -4,7 +4,7 @@ import argparse
 import curses
 import os
 
-from . import config, interlude, ui
+from . import config, interlude, report, scores, ui
 from .game import Game
 
 
@@ -25,6 +25,7 @@ class App:
 
     def main(self):
         seed = self.args.seed
+        self.title_screen(seed)
         while True:
             game = Game(seed=seed, start_floor=self.args.start_floor)
             result = self.play(game)
@@ -115,11 +116,44 @@ class App:
                 return
         game.use_item(index, direction)
 
+    def title_screen(self, seed):
+        lines = [(row, "title") for row in ui.TITLE_ART]
+        lines += [("", "normal"),
+                  ("You are the only IT tech in the building. It is 19:00.", "normal"),
+                  ("Twelve floors. Twelve hours. One handover at 07:00.", "normal"),
+                  ("", "normal"),
+                  (f"Seed: {seed if seed is not None else 'random'}", "dim"),
+                  ("", "normal"),
+                  ("Top shifts", "info")]
+        lines += ui.scores_lines(scores.load(), limit=5)
+        self.ui.text_screen(lines, "Press any key to clock in  (? in game for help)")
+
     def end_screen(self, game):
-        lines = [("SHIFT OVER", "bad"), ("", "normal"),
-                 (f"Cause: {game.cause}", "normal"),
-                 (f"Seed: {game.seed}", "dim")]
-        return self.ui.text_screen(lines, "R: replay seed   N: new shift   Q: quit")
+        cause = report.cause_text(game)
+        entries, rank = scores.record(game, cause)
+        score = scores.compute_score(game)
+        if game.state == "won":
+            lines = [("=== HANDOVER COMPLETE ===", "good"), ("", "normal"),
+                     ("REQ0000700  Shift handover", "warn"),
+                     ("Status: Resolved", "normal"),
+                     ("Notes from day shift: 'Quiet night, was it?'", "normal"),
+                     ("", "normal"),
+                     ("The Exchange server is dead. Long live the Exchange server.", "dim")]
+        else:
+            number, fields = report.incident_ticket(game)
+            lines = [("=== YOUR SHIFT IS OVER ===", "bad"), ("", "normal"),
+                     (f"{number}", "warn")]
+            for name, value in fields:
+                wrapped = self.ui.wrap(value, "normal", 50)
+                lines.append((f"{name + ':':<19}{wrapped[0][0]}", "normal"))
+                lines += [(" " * 19 + text, "normal") for text, _ in wrapped[1:]]
+        lines += [("", "normal"),
+                  (f"Score {score}   Floor {game.floor}   Kills {game.player.kills}   "
+                   f"Seed {game.seed}", "money"), ("", "normal")]
+        if game.start_floor != 1:
+            lines += [("(Practice run from a later floor: not recorded.)", "dim"), ("", "normal")]
+        lines += ui.scores_lines(entries, highlight=rank, limit=5)
+        return self.ui.text_screen(lines, "R: replay this seed   N: new shift   Q: quit")
 
 
 def run(argv=None):

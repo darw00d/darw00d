@@ -1,6 +1,7 @@
 """Everything that touches curses lives here."""
 
 import curses
+import sys
 import textwrap
 
 from . import config, mapgen
@@ -124,8 +125,10 @@ class UI:
             key = self.scr.getch()
             if key == curses.KEY_RESIZE:
                 try:
+                    if sys.platform == "win32":
+                        curses.resize_term(0, 0)
                     curses.update_lines_cols()
-                except AttributeError:
+                except (AttributeError, curses.error):
                     pass
                 return key
             if key != -1:
@@ -156,9 +159,15 @@ class UI:
         self.scr.refresh()
 
     def _draw_topbar(self, game, cols):
-        left = f" NIGHT SHIFT  Floor {game.floor}/{config.TOTAL_FLOORS}"
+        left = f" NIGHT SHIFT  Floor {game.floor}/{config.TOTAL_FLOORS}  "
         clock = f"[ {game.clock} ] "
         self.put(0, 0, left.ljust(cols), "title")
+        x = len(left)
+        for text, color in game.status_effects():
+            if x + len(text) + 1 > cols - len(clock):
+                break
+            self.put(0, x, text, color)
+            x += len(text) + 2
         self.put(0, cols - len(clock), clock, "warn")
 
     def _camera(self, game, view_w, view_h):
@@ -202,10 +211,11 @@ class UI:
         for e in game.enemies:
             if e.pos in game.visible:
                 draw(e.x, e.y, e.glyph, e.color)
-        draw(game.player.x, game.player.y, "@", "player")
+        on_target = any(g[:2] == game.player.pos for g in game.extra_glyphs())
+        draw(game.player.x, game.player.y, "@", "telegraph" if on_target else "player")
 
     @staticmethod
-    def _bar(value, maximum, width=10):
+    def _bar(value, maximum, width=8):
         filled = round(width * value / maximum) if maximum else 0
         return "[" + "#" * filled + "-" * (width - filled) + "]"
 
@@ -219,23 +229,18 @@ class UI:
         for row in range(height):
             self.put(top + row, left, "|", "dim")
         y = top
-        for label, val, mx in (("Health ", p.hp, p.max_hp),
-                               ("Caffeine", p.caffeine, p.max_caffeine),
-                               ("Sanity ", p.sanity, p.max_sanity)):
-            self.put(y, x, f"{label:<8} {val:>3}/{mx}", "normal")
-            self.put(y + 1, x + 1, self._bar(val, mx, 16), self._stat_color(val, mx))
-            y += 2
-        y += 1
-        self.put(y, x, f"Weapon: {p.weapon_name}", "normal")
-        y += 1
-        self.put(y, x, f"Tickets closed: {p.tickets}", "money")
-        y += 2
-        status = game.status_effects() if hasattr(game, "status_effects") else []
-        for text, color in status:
-            self.put(y, x, text, color)
+        # 17 rows is all we get at 80x24: 3 stats, gap, weapon, tickets,
+        # inventory header + 9 slots, seed line.
+        for label, val, mx in (("HP ", p.hp, p.max_hp), ("Caf", p.caffeine, p.max_caffeine),
+                               ("San", p.sanity, p.max_sanity)):
+            self.put(y, x, f"{label} {val:>3}/{mx:<3}", "normal")
+            self.put(y, x + 12, self._bar(val, mx), self._stat_color(val, mx))
             y += 1
-        if status:
-            y += 1
+        y += 1
+        self.put(y, x, f"Wpn: {p.weapon_name}", "normal")
+        y += 1
+        self.put(y, x, f"Tickets: {p.tickets}", "money")
+        y += 1
         self.put(y, x, "Inventory", "info")
         y += 1
         if not p.inventory:
@@ -331,7 +336,10 @@ class UI:
             self.put(min(rows - 1, top + len(lines) + 1), max(0, (cols - len(footer)) // 2),
                      footer, "dim")
         self.scr.refresh()
-        return self.get_key()
+        key = self.get_key()
+        if key == curses.KEY_RESIZE:
+            return self.text_screen(lines, footer)
+        return key
 
 
 HELP_LINES = [
@@ -348,4 +356,28 @@ HELP_LINES = [
     ("", "normal"),
     ("Survive each floor and take the lift. Each floor is one hour.", "info"),
     ("Reach 07:00 handover to win.", "info"),
+    ("", "normal"),
+    ("Caffeine drains as you work; below 30 you slow down. Sanity at 0 means", "dim"),
+    ("you resign on the spot. A red @ means you're standing somewhere bad.", "dim"),
+    ("Spend ticket closures at the vending machine between floors.", "dim"),
 ]
+
+TITLE_ART = [
+    r" _  _ _      _   _     ___ _    _  __ _   ",
+    r"| \| (_)__ _| |_| |_  / __| |_ (_)/ _| |_ ",
+    r"| .` | / _` | ' \  _| \__ \ ' \| |  _|  _|",
+    r"|_|\_|_\__, |_||_\__| |___/_||_|_|_|  \__|",
+    r"       |___/                              ",
+]
+
+
+def scores_lines(entries, highlight=None, limit=10):
+    if not entries:
+        return [("No shifts on record. Be the first to suffer.", "dim")]
+    out = [(" #  Score  Reached     Seed     Outcome", "info")]
+    for i, e in enumerate(entries[:limit], start=1):
+        outcome = "HANDOVER" if e.get("won") else e.get("cause", "?")
+        line = (f"{i:>2} {e['score']:>6}  F{e.get('floor', '?'):<2} {e.get('clock', ''):>5}"
+                f"  {e.get('seed', ''):>7}  {outcome}")[:72]
+        out.append((line, "warn" if i == highlight else "normal"))
+    return out

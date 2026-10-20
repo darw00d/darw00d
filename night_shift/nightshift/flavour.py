@@ -131,3 +131,27 @@ PHISH_DEATH = [
 CAFFEINE_LOW = "Your eyelids weigh roughly as much as a 2U server. (Caffeine low: you're slower.)"
 CAFFEINE_OUT = "You are fully decaffeinated. Your head pounds like a failing hard drive."
 SANITY_LOW = "The fluorescent lights are starting to talk to you. (Sanity low.)"
+
+BOSS_SPOT = ("The Sentient Exchange Server looms in the data hall, fans screaming. "
+             "\"YOU ARE NOT AUTHORISED TO RELAY.\"")
+BOSS_PHASES = {
+    1: "PHASE 1: MAIL STORM. The server starts a reply-all chain to the entire company.",
+    2: "PHASE 2: MAILBOX QUOTA. \"YOUR MAILBOX IS 104% FULL. ITEMS WILL BE ARCHIVED.\"",
+    3: "PHASE 3: \"421 SERVICE UNAVAILABLE.\" The server starts throwing up a shield.",
+}
+BOSS_STORM = [
+    "RE: RE: RE: FW: RE: Who keeps replying all?? -- emails rain down. Watch the marked tiles!",
+    "The server queues 40,000 messages for delivery. To you. Watch the marked tiles!",
+    "An out-of-office loop begins. Watch the marked tiles!",
+]
+BOSS_STORM_HIT = "An avalanche of reply-alls buries you."
+BOSS_ARCHIVE = "Your {item} is auto-archived to a PST file somewhere on this floor."
+BOSS_QUOTA_EMPTY = "\"MAILBOX FULL.\" Nothing left to archive, so it archives your will to live."
+BOSS_SHIELD_UP = "421 4.3.2 Service not available. The server raises a shield."
+BOSS_SHIELD_DOWN = "The server's shield drops for 'scheduled maintenance'. Hit it now!"
+BOSS_SHIELD_HIT = "421 4.3.2 Service not available, closing transmission channel. No damage."
+BOSS_MELEE = "The Exchange server hurls an NDR at your face."
+BOSS_DEATH = [
+    "The Sentient Exchange Server's fans spin down. 'Migrating... to... the cloud...'",
+]
+SPAM_DEATH = ["The spam is filtered.", "You mark it as junk."]

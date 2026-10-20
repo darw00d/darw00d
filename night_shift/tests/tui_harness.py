@@ -20,7 +20,8 @@ KEYS = {"up": b"\x1bOA", "down": b"\x1bOB", "right": b"\x1bOC", "left": b"\x1bOD
 
 
 class TUI:
-    def __init__(self, *args, cols=100, rows=30, env=None):
+    def __init__(self, *args, cols=100, rows=30, env=None, cmd=None):
+        """Runs `python -m nightshift *args`, or `cmd` (an argv list) if given."""
         self.screen = pyte.Screen(cols, rows)
         self.stream = pyte.ByteStream(self.screen)
         self.pid, self.fd = pty.fork()
@@ -28,7 +29,8 @@ class TUI:
             os.chdir(ROOT)
             os.environ.update({"TERM": "xterm-256color", "LINES": str(rows),
                                "COLUMNS": str(cols), **(env or {})})
-            os.execvp(sys.executable, [sys.executable, "-m", "nightshift", *args])
+            argv = cmd or [sys.executable, "-m", "nightshift", *args]
+            os.execvp(argv[0], argv)
         fcntl.ioctl(self.fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
         self.output = b""
         self.pump(1.0)
