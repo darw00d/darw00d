@@ -41,6 +41,8 @@ class Game:
         self.current_room = None
         self.phantom = None
         self.warned_sanity = False
+        self.shop_closed = False    # set by the change-freeze event
+        self.extra_angry = 0        # Angry Users owed to the next floor by events
         self.new_floor()
 
     # ------------------------------------------------------------ floors
@@ -90,6 +92,11 @@ class Game:
                 self.enemies.append(kind(*pos, frng.choice(flavour.PHISH_DISGUISES)))
             else:
                 self.enemies.append(kind(*pos))
+        for _ in range(self.extra_angry):
+            pos = self.random_spawn_tile(frng)
+            if pos:
+                self.enemies.append(entities.AngryUser(*pos))
+        self.extra_angry = 0
 
     def random_spawn_tile(self, rng, min_dist=7):
         start_room = self.gmap.room_at(*self.gmap.start)
@@ -235,6 +242,7 @@ class Game:
     def next_floor(self):
         """Called by the UI after any between-floor screens."""
         self.floor += 1
+        self.shop_closed = False
         self.new_floor()
 
     # ------------------------------------------------------------ turn loop

@@ -282,9 +282,45 @@ class UI:
         self.render(game, prompt + " (y/n)")
         return self.get_key() in (ord("y"), ord("Y"))
 
+    def wrap(self, text, color="normal", width=64):
+        return [(line, color) for line in textwrap.wrap(text, width)] or [("", color)]
+
+    def event_screen(self, event, header):
+        lines = [(header, "dim"), ("", "normal"), (f"*** {event.title} ***", "warn"), ("", "normal")]
+        lines += self.wrap(event.text)
+        lines.append(("", "normal"))
+        for i, (label, _) in enumerate(event.choices, start=1):
+            lines.append((f"  {i}) {label}", "info"))
+        while True:
+            key = self.text_screen(lines, "Choose 1 or 2")
+            if ord("1") <= key < ord("1") + len(event.choices):
+                return key - ord("1")
+
+    def shop_screen(self, game, shop, header):
+        note = (shop.quip, "dim")
+        while True:
+            p = game.player
+            lines = [(header, "dim"), ("", "normal"), ("=== VENDING MACHINE ===", "warn"),
+                     note, ("", "normal")]
+            for i, item in enumerate(shop.stock, start=1):
+                lines.append((f" {i}) {item.label:<22} {item.price:>3} tickets", item.color))
+                lines.append((f"      {item.desc}", "dim"))
+            if not shop.stock:
+                lines.append(("  (sold out)", "dim"))
+            lines += [("", "normal"),
+                      (f"You have {p.tickets} ticket closures. "
+                       f"Pockets: {len(p.inventory)}/{p.INVENTORY_SIZE}", "money")]
+            key = self.text_screen(lines, "1-9 buy   Enter/Esc leave")
+            if ord("1") <= key <= ord("9"):
+                ok, msg = shop.buy(game, key - ord("1"))
+                if msg:
+                    note = (msg, "good" if ok else "bad")
+            elif key in (10, 13, curses.KEY_ENTER, ESC, ord("q"), ord("Q"), ord(" ")):
+                return
+
     def text_screen(self, lines, footer="Press any key"):
         """lines: list of (text, color). Centred block of text."""
-        self.scr.erase()
+        self.scr.clear()     # full repaint: menus replace the whole screen
         rows, cols = self.size()
         top = max(0, (rows - len(lines) - 2) // 2)
         width = max((len(t) for t, _ in lines), default=0)

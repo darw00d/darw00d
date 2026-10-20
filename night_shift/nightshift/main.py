@@ -4,7 +4,7 @@ import argparse
 import curses
 import os
 
-from . import config, ui
+from . import config, interlude, ui
 from .game import Game
 
 
@@ -43,6 +43,7 @@ class App:
         u = self.ui
         while game.state in ("playing", "floor_done"):
             if game.state == "floor_done":
+                self.between_floors(game)
                 game.next_floor()
                 continue
             if u.too_small():
@@ -79,6 +80,29 @@ class App:
                 if u.confirm(game, "Abandon your shift?"):
                     return "quit"
         return game.state
+
+    def between_floors(self, game):
+        hour = (config.START_HOUR + game.floor) % 24
+        header = (f"Floor {game.floor} survived. The lift crawls down. "
+                  f"It is now {hour:02d}:00.")
+        event = interlude.roll_event(game)
+        if event:
+            choice = self.ui.event_screen(event, header)
+            result = event.choose(game, choice)
+            self.ui.text_screen([(header, "dim"), ("", "normal")] + self.ui.wrap(result, "info"))
+        if game.shop_closed:
+            self.ui.text_screen([(header, "dim"), ("", "normal"),
+                                 ("The vending machine has a laminated sign:", "normal"),
+                                 ("'CHANGE FREEZE IN EFFECT'", "warn")])
+        else:
+            self.ui.shop_screen(game, interlude.Shop(game), header)
+        if game.floor + 1 == config.TOTAL_FLOORS:
+            self.ui.text_screen([
+                ("06:00. The final floor.", "bad"), ("", "normal"),
+                ("Every alert on your phone points to the same place:", "normal"),
+                ("the main data hall, and the Exchange server that lives there.", "normal"),
+                ("", "normal"),
+                ("It has become sentient. It is not happy about it.", "warn")])
 
     def use_item(self, game, index):
         inv = game.player.inventory
