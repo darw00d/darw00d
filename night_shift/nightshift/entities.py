@@ -336,7 +336,7 @@ class SpamEmail(Enemy):
     color = "spam"
     name = "Spam Email"
     max_hp = 2
-    speed = 14
+    speed = 12
     damage = (1, 1)
     reward = (0, 1)
     death_lines = flavour.SPAM_DEATH
@@ -356,7 +356,7 @@ class ExchangeServer(Enemy):
     name = "Sentient Exchange Server"
     max_hp = 50
     speed = 10
-    damage = (3, 5)
+    damage = (2, 4)
     reward = (25, 25)
     death_lines = flavour.BOSS_DEATH
     stun_immune = True
@@ -369,6 +369,7 @@ class ExchangeServer(Enemy):
         self.shield = False
         self.shield_timer = 0
         self.moved = False
+        self.storms = 0
 
     @property
     def current_phase(self):
@@ -418,7 +419,9 @@ class ExchangeServer(Enemy):
             if phase == 1:
                 self.timer = 3
                 self.start_storm(game, game.rng.randint(5, 7))
-                self.spawn_spam(game, 1)
+                self.storms += 1
+                if self.storms % 2:      # every other storm, so you can reach the boss
+                    self.spawn_spam(game, 1)
             elif phase == 2:
                 self.timer = 4
                 self.quota_attack(game)
@@ -426,7 +429,8 @@ class ExchangeServer(Enemy):
             else:
                 self.timer = 3
                 self.start_storm(game, game.rng.randint(6, 9) if self.shield else 4)
-                self.spawn_spam(game, 1)
+                if self.shield:
+                    self.spawn_spam(game, 1)
             return
 
         if self.adjacent_to_player(game):
@@ -452,12 +456,12 @@ class ExchangeServer(Enemy):
         hit = game.player.pos in self.marked
         self.marked = set()
         if hit:
-            dmg = game.rng.randint(3, 5)
+            dmg = game.rng.randint(2, 4)
             game.log.add(f"{flavour.BOSS_STORM_HIT} (-{dmg} HP)", "bad")
             combat.hurt_player(game, dmg, "a reply-all storm")
 
     def spawn_spam(self, game, n):
-        if sum(isinstance(e, SpamEmail) for e in game.enemies) >= 4:
+        if sum(isinstance(e, SpamEmail) for e in game.enemies) >= 3:
             return
         spots = [(self.x + dx, self.y + dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1)
                  if not game.blocked(self.x + dx, self.y + dy)]

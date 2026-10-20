@@ -30,7 +30,9 @@ def kill_enemy(game, enemy):
     p.tickets += reward
     p.sanity = min(p.max_sanity, p.sanity + 3)    # closing a ticket is good for the soul
     line = game.rng.choice(enemy.death_lines).format(name=enemy.name)
-    game.log.add(f"{line} +{reward} ticket closure{'' if reward == 1 else 's'}.", "good")
+    if reward:
+        line += f" +{reward} ticket closure{'' if reward == 1 else 's'}."
+    game.log.add(line, "good")
     enemy.on_death(game)
 
 

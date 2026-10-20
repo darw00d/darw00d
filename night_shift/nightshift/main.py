@@ -103,7 +103,9 @@ class App:
                 ("Every alert on your phone points to the same place:", "normal"),
                 ("the main data hall, and the Exchange server that lives there.", "normal"),
                 ("", "normal"),
-                ("It has become sentient. It is not happy about it.", "warn")])
+                ("It has become sentient. It is not happy about it.", "warn"),
+                ("", "normal"),
+                ("(Tip: an ethernet cable reaches two tiles. The server's arms don't.)", "dim")])
 
     def use_item(self, game, index):
         inv = game.player.inventory
