@@ -3,7 +3,7 @@ headlessly and replayed from a seed."""
 
 import random
 
-from . import combat, config, entities, flavour, items, mapgen
+from . import combat, config, entities, flavour, items, mapgen, seeding
 
 
 class MessageLog:
@@ -38,7 +38,7 @@ class Game:
         self.enemies = []
         self.items = []
         self.visible = set()
-        self.dist_map = {}
+        self._dist_map = None
         self.current_room = None
         self.phantom = None
         self.warned_sanity = False
@@ -73,7 +73,7 @@ class Game:
         self.update_view()
 
     def populate(self):
-        frng = random.Random(f"{self.seed}:spawn:{self.floor}")
+        frng = seeding.rng(self.seed, "spawn", self.floor)
         if self.is_boss_floor:
             hall = next(r for r in self.gmap.rooms if r.kind == "hall")
             self.enemies.append(entities.ExchangeServer(*hall.center))
@@ -358,7 +358,7 @@ class Game:
         self.tick_player_stats()
         for enemy in list(self.enemies):
             enemy.observe(self)
-        self.dist_map = self.gmap.distances_from(p.x, p.y)
+        self._dist_map = None       # computed on demand by chasing enemies
         while p.energy < 0 and self.state == "playing":
             p.energy += p.speed
             for enemy in list(self.enemies):
@@ -371,8 +371,16 @@ class Game:
                         enemy.stunned -= 1
                     else:
                         enemy.take_turn(self)
-        self.update_view()
+        # The player hasn't moved since update_view() above, so the view still holds.
+        self._dist_map = None
         return True
+
+    @property
+    def dist_map(self):
+        """Steps from the player to every reachable tile, for chasing enemies."""
+        if self._dist_map is None:
+            self._dist_map = self.gmap.distances_from(*self.player.pos)
+        return self._dist_map
 
     def update_view(self):
         p = self.player

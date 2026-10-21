@@ -26,10 +26,21 @@ def load():
 
 
 def record(game, cause_text):
-    """Add this run to the table. Returns (entries, rank or None).
+    """Add this run to the score file. Returns (entries, rank or None).
     Practice runs (started past floor 1) are not recorded."""
+    entries, rank = insert(load(), game, cause_text)
+    if rank is not None:
+        try:
+            score_path().write_text(json.dumps(entries, indent=2))
+        except OSError:
+            pass   # read-only home dir: the run still counts in our hearts
+    return entries, rank
+
+
+def insert(entries, game, cause_text):
+    """Pure version of record(): returns the new table and this run's rank."""
     if game.start_floor != 1:
-        return load(), None
+        return entries, None
     entry = {
         "score": compute_score(game),
         "won": game.state == "won",
@@ -39,12 +50,8 @@ def record(game, cause_text):
         "seed": game.seed,
         "cause": cause_text,
     }
-    entries = load() + [entry]
+    entries = list(entries) + [entry]
     entries.sort(key=lambda e: e["score"], reverse=True)
     entries = entries[:MAX_ENTRIES]
     rank = next((i for i, e in enumerate(entries, 1) if e is entry), None)
-    try:
-        score_path().write_text(json.dumps(entries, indent=2))
-    except OSError:
-        pass   # read-only home dir: the run still counts in our hearts
     return entries, rank

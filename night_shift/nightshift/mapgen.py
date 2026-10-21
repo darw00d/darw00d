@@ -5,11 +5,10 @@ floor number, so a seed always produces the same building no matter what the
 player did on earlier floors.
 """
 
-import random
 from collections import deque
 from dataclasses import dataclass
 
-from . import config
+from . import config, seeding
 
 # Tile glyphs double as tile types.
 WALL = "#"
@@ -137,19 +136,71 @@ class GameMap:
         return None
 
     def distances_from(self, x, y, through_locked=False):
-        """BFS step distances over walkable tiles (ignores monsters)."""
-        dist = {(x, y): 0}
-        queue = deque([(x, y)])
-        while queue:
-            cx, cy = queue.popleft()
+        """BFS step distances over walkable tiles (ignores monsters).
+
+        Works on flat int lists rather than a dict of tuples: this runs every
+        turn, and tuple-keyed dicts are slow under Brython (the web build)."""
+        w, h, tiles, jams = self.width, self.height, self.tiles, self.jams
+        d = [-1] * (w * h)
+        start = y * w + x
+        order = [start]
+        d[start] = 0
+        i = 0
+        while i < len(order):
+            cur = order[i]
+            i += 1
+            cy, cx = divmod(cur, w)
+            nd = d[cur] + 1
             for dx, dy in DIRS:
                 nx, ny = cx + dx, cy + dy
-                if (nx, ny) in dist:
-                    continue
-                if self.walkable(nx, ny) or (through_locked and self.tile(nx, ny) == LOCKED):
-                    dist[(nx, ny)] = dist[(cx, cy)] + 1
-                    queue.append((nx, ny))
-        return dist
+                if 0 <= nx < w and 0 <= ny < h:
+                    ni = ny * w + nx
+                    if d[ni] < 0:
+                        t = tiles[ny][nx]
+                        if ((t in WALKABLE and not (jams and (nx, ny) in jams))
+                                or (through_locked and t == LOCKED)):
+                            d[ni] = nd
+                            order.append(ni)
+        return DistMap(w, h, d, order)
+
+
+class DistMap:
+    """Read-only {(x, y): steps} view over a flat BFS result."""
+
+    __slots__ = ("w", "h", "d", "order")
+
+    def __init__(self, w, h, d, order):
+        self.w, self.h, self.d, self.order = w, h, d, order
+
+    def get(self, pos, default=None):
+        x, y = pos
+        if 0 <= x < self.w and 0 <= y < self.h:
+            v = self.d[y * self.w + x]
+            if v >= 0:
+                return v
+        return default
+
+    def __contains__(self, pos):
+        return self.get(pos) is not None
+
+    def __getitem__(self, pos):
+        v = self.get(pos)
+        if v is None:
+            raise KeyError(pos)
+        return v
+
+    def __len__(self):
+        return len(self.order)
+
+    def __iter__(self):
+        return iter(self.keys())
+
+    def keys(self):
+        w = self.w
+        return [(i % w, i // w) for i in self.order]
+
+    def items(self):
+        return [(pos, self[pos]) for pos in self.keys()]
 
 
 def _bresenham(x0, y0, x1, y1):
@@ -210,7 +261,7 @@ def has_los(gmap, x0, y0, x1, y1):
 # --------------------------------------------------------------------------- generation
 
 def generate_floor(seed, floor, boss=False, locked_room=True):
-    rng = random.Random(f"{seed}:map:{floor}")
+    rng = seeding.rng(seed, "map", floor)
     for _ in range(200):
         gmap = _generate_boss(rng) if boss else _generate(rng, locked_room)
         if gmap is not None:

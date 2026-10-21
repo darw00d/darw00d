@@ -1,0 +1,597 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Night Shift</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0e13">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans+Condensed:wght@500;600;700&display=swap">
+<style>
+/* Layout: one-screen phone app. Clock + meters on top, map fills the middle,
+   log under it, thumb zone (pockets, pad, actions) at the bottom. Wide screens
+   put the thumb zone in a right-hand column. Deliberately dark-only: it's 3am. */
+:root {
+  color-scheme: dark;
+  --bg: #0a0e13;          /* office after hours */
+  --panel: #121922;       /* carpet tile under a desk lamp */
+  --line: #233040;
+  --fg: #dce6ee;          /* fluorescent tube */
+  --muted: #7d8c9b;
+  --accent: #f2a93b;      /* amber status LED */
+  --good: #5fd38d;
+  --bad: #ff5d5d;
+  --font-map: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-ui: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+
+  /* map colours, keyed by the codes nightshift/web.py sends (a = normal, ...) */
+  --c-normal: #dce6ee; --c-dim: #6f7d8b; --c-memory: #2f4256; --c-player: #ffffff;
+  --c-angry: #ff5d5d; --c-cert: #e8c547; --c-printer: #4fd6e0; --c-phish: #e07bff;
+  --c-boss: #ff3b3b; --c-spam: #c58ae0; --c-item: #5fd38d; --c-coffee: #f2a93b;
+  --c-money: #ffd166; --c-good: #5fd38d; --c-bad: #ff5d5d; --c-info: #6fc3df;
+  --c-warn: #f2a93b; --c-wall: #a9b8c6; --c-floor: #3a4a5a; --c-desk: #b08a4a;
+  --c-rack: #5d8df0; --c-door: #c99a52; --c-locked: #ff5d5d; --c-lift: #5fd38d;
+  --c-jam: #ffffff; --c-telegraph: #ff3b3b; --c-title: #6fc3df;
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-ui);
+  overflow: hidden; -webkit-user-select: none; user-select: none;
+  -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%;
+}
+button { font: inherit; color: inherit; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.app {
+  height: 100%; display: flex; flex-direction: column; gap: 8px;
+  padding-left: max(12px, env(safe-area-inset-left, 0px));
+  padding-right: max(12px, env(safe-area-inset-right, 0px));
+  padding-block: 8px; box-sizing: border-box; max-width: 1100px; margin: 0 auto;
+}
+@media (min-width: 400px) {
+  .app { padding-left: max(16px, env(safe-area-inset-left, 0px));
+         padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+}
+
+/* ---- top bar */
+.top { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.floor { font: 600 0.8rem/1 var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.floor b { color: var(--fg); font-weight: 700; }
+.chips { display: flex; gap: 4px; flex: 1; min-width: 0; overflow: hidden; }
+.chip { font: 700 0.66rem/1 var(--font-ui); letter-spacing: 0.08em; padding: 4px 6px; border-radius: 3px; border: 1px solid currentColor; white-space: nowrap; }
+.clock { font: 700 1.5rem/1 var(--font-map); color: var(--accent); font-variant-numeric: tabular-nums; text-shadow: 0 0 12px color-mix(in srgb, var(--accent) 45%, transparent); margin-left: auto; }
+
+.meters { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.meter { display: grid; gap: 3px; }
+.meter-head { display: flex; justify-content: space-between; font: 600 0.68rem/1 var(--font-ui); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.meter-head span:last-child { color: var(--fg); font-family: var(--font-map); letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.bar { height: 5px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: var(--good); transition: width .2s ease; }
+.bar i.warn { background: var(--accent); }
+.bar i.bad { background: var(--bad); }
+
+/* ---- main split */
+.body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+.view { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
+.mapbox {
+  flex: 1; min-height: 120px; position: relative; overflow: hidden;
+  background: #070a0e; border: 1px solid var(--line); border-radius: 6px; touch-action: none;
+}
+#map {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  margin: 0; font-family: var(--font-map); line-height: 1.18; white-space: pre; color: var(--c-normal);
+}
+.log { font: 400 0.74rem/1.3 var(--font-map); display: grid; gap: 1px; height: 3.9em; overflow: hidden; align-content: end; }
+.log div { color: var(--muted); }
+.log div.fresh { color: var(--line-fresh, var(--fg)); }
+
+.controls { display: grid; gap: 8px; }
+.prompt { font: 600 0.8rem/1.2 var(--font-ui); color: var(--accent); min-height: 1.5rem; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.prompt .meta { font: 500 0.7rem/1.2 var(--font-map); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.prompt .meta b { color: var(--fg); font-weight: 600; }
+.prompt button { padding: 4px 10px; border: 1px solid var(--accent); background: transparent; border-radius: 4px; font-weight: 700; }
+
+/* pockets: one scrollable strip of what you're carrying */
+.pockets { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; min-height: 38px; align-items: stretch; }
+.pockets::-webkit-scrollbar { display: none; }
+.pockets .none { font: 400 0.74rem/38px var(--font-map); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.slot {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 6px; height: 38px; padding: 0 10px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 5px; text-align: left;
+  font: 500 0.74rem/1.1 var(--font-ui); touch-action: manipulation;
+}
+.slot .g { font: 700 0.95rem/1 var(--font-map); }
+.slot .n { white-space: nowrap; }
+.slot .k { margin-left: auto; font: 500 0.6rem/1 var(--font-map); color: var(--muted); }
+.slot:active { border-color: var(--accent); }
+.pick .slot { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+
+.thumbs { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: center; }
+.pad { display: grid; grid-template-columns: repeat(3, 48px); grid-template-rows: repeat(3, 48px); gap: 4px; }
+.pad button, .acts button {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; touch-action: manipulation;
+}
+.pad button { font: 700 1.2rem/1 var(--font-map); }
+.pad .wait { font: 600 0.62rem/1 var(--font-ui); letter-spacing: 0.1em; color: var(--muted); }
+.pad button:active, .acts button:active { background: var(--line); }
+.aiming .pad button:not(.wait) { border-color: var(--accent); color: var(--accent); }
+.acts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.acts button { height: 48px; font: 700 0.8rem/1 var(--font-ui); letter-spacing: 0.12em; }
+.acts button[disabled] { opacity: .35; }
+.acts .lift.ready { border-color: var(--good); color: var(--good); }
+.acts .sub { display: block; font: 500 0.58rem/1 var(--font-ui); letter-spacing: 0.04em; color: var(--muted); margin-top: 4px; }
+
+/* landscape (phone on its side, tablets, desktops): controls move to the right */
+@media (orientation: landscape) and (min-width: 560px) {
+  .body { flex-direction: row; }
+  .controls { width: min(330px, 42vw); align-content: end; }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .app { gap: 4px; padding-block: 4px; }
+  .meters { gap: 6px; }
+  .log { height: 2.6em; }
+  .pad { grid-template-columns: repeat(3, 40px); grid-template-rows: repeat(3, 40px); }
+  .acts button { height: 40px; }
+  .acts .sub { display: none; }
+}
+@media (max-height: 700px) and (max-width: 759px) {
+  .pad { grid-template-columns: repeat(3, 42px); grid-template-rows: repeat(3, 42px); }
+  .acts button { height: 42px; }
+  .acts .sub { display: none; }
+}
+
+/* ---- full-screen sheets: title, events, shop, death ticket */
+.sheet {
+  position: fixed; inset: 0; z-index: 5; overflow-y: auto; background: color-mix(in srgb, var(--bg) 94%, transparent);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  padding: calc(env(safe-area-inset-top, 0px) + 24px) max(16px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 24px) max(16px, env(safe-area-inset-left, 0px));
+  -webkit-user-select: text; user-select: text;
+}
+.sheet-inner { max-width: 34rem; margin: 0 auto; display: grid; gap: 14px; }
+.kicker { font: 600 0.74rem/1.2 var(--font-ui); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.sheet h1, .sheet h2 { margin: 0; text-wrap: balance; }
+.sheet h2 { font: 700 1.55rem/1.1 var(--font-ui); letter-spacing: 0.02em; text-transform: uppercase; }
+.sheet p { margin: 0; font: 400 0.95rem/1.45 var(--font-map); max-width: 65ch; }
+.choices { display: grid; gap: 8px; }
+.choice {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; text-align: left;
+  padding: 13px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  font: 600 1rem/1.2 var(--font-ui); touch-action: manipulation;
+}
+.choice:active { border-color: var(--accent); }
+.choice .g { font: 700 1.1rem/1 var(--font-map); width: 1ch; }
+.choice small { display: block; margin-top: 3px; font: 400 0.78rem/1.3 var(--font-map); color: var(--muted); }
+.choice .price { font: 700 0.85rem/1 var(--font-map); color: var(--c-money); white-space: nowrap; }
+.choice[disabled] { opacity: .45; }
+.choice.primary { border-color: var(--accent); color: var(--accent); }
+.choice.danger { border-color: var(--bad); color: var(--bad); }
+.leave-bar { position: sticky; bottom: calc(-24px - env(safe-area-inset-bottom, 0px)); padding: 12px 0 calc(24px + env(safe-area-inset-bottom, 0px)); margin-bottom: calc(-24px - env(safe-area-inset-bottom, 0px)); background: linear-gradient(transparent, var(--bg) 35%); }
+.leave { padding: 12px 18px; border-radius: 6px; border: 1px solid var(--accent); background: transparent; color: var(--accent); font: 700 0.85rem/1 var(--font-ui); letter-spacing: .1em; text-transform: uppercase; }
+
+.ticket { border: 1px solid var(--line); border-left: 3px solid var(--bad); background: var(--panel); border-radius: 4px; padding: 12px 14px; display: grid; gap: 8px; }
+.ticket.ok { border-left-color: var(--good); }
+.ticket .num { font: 700 1.05rem/1 var(--font-map); color: var(--accent); letter-spacing: .04em; }
+.ticket dl { margin: 0; display: grid; grid-template-columns: minmax(6.5rem, auto) 1fr; gap: 6px 12px; font: 400 0.82rem/1.35 var(--font-map); }
+.ticket dt { color: var(--muted); }
+.ticket dd { margin: 0; min-width: 0; }
+
+.scores { width: 100%; border-collapse: collapse; font: 400 0.78rem/1.3 var(--font-map); font-variant-numeric: tabular-nums; }
+.scores th { text-align: left; font: 600 0.66rem/1 var(--font-ui); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); padding: 0 6px 6px 0; }
+.scores td { padding: 4px 6px 4px 0; border-top: 1px solid var(--line); vertical-align: top; }
+.scores tr.me td { color: var(--accent); }
+.scores .num { text-align: right; }
+.empty-note { color: var(--muted); font: 400 0.82rem/1.4 var(--font-map); margin: 0; }
+
+/* title */
+.logo { font: 700 clamp(2.4rem, 13vw, 4.2rem)/0.9 var(--font-map); letter-spacing: -0.02em; margin: 0; color: var(--fg); }
+.logo span { color: var(--accent); }
+.logo-clock { font: 700 0.9rem/1 var(--font-map); color: var(--accent); letter-spacing: .08em; }
+.seed-row { display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap; }
+.seed-row label { flex: 1 1 10rem; display: grid; gap: 4px; font: 600 0.66rem/1 var(--font-ui); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.seed-row input { font: 500 1rem/1 var(--font-map); padding: 10px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; color: var(--fg); -webkit-user-select: text; user-select: text; min-width: 0; }
+.legend { display: grid; grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr)); gap: 4px 12px; font: 400 0.78rem/1.3 var(--font-map); color: var(--muted); }
+.legend b { font-weight: 700; }
+
+.boot { position: fixed; inset: 0; display: grid; place-content: center; gap: 10px; text-align: center; background: var(--bg); z-index: 9; padding: 24px; }
+.boot .logo-clock { font-size: 1.6rem; }
+.boot p { margin: 0; font: 400 0.85rem/1.4 var(--font-map); color: var(--muted); }
+.boot .err { color: var(--bad); max-width: 30rem; }
+@keyframes blink { 50% { opacity: .25; } }
+.boot .cursor { animation: blink 1s steps(1) infinite; }
+@media (prefers-reduced-motion: reduce) { .boot .cursor { animation: none; } .bar i { transition: none; } }
+</style>
+
+<div class="boot" id="boot">
+  <div class="logo-clock">19:00<span class="cursor">_</span></div>
+  <p id="boot-msg">Clocking in. Loading the building (first visit takes a few seconds)…</p>
+</div>
+
+<div class="app" id="app" hidden>
+  <header class="top">
+    <div class="floor">Floor <b id="floor">1</b>/<span id="floors">12</span></div>
+    <div class="chips" id="chips"></div>
+    <div class="clock" id="clock">19:00</div>
+  </header>
+  <div class="meters">
+    <div class="meter"><div class="meter-head"><span>Health</span><span id="hp-t"></span></div><div class="bar"><i id="hp-b"></i></div></div>
+    <div class="meter"><div class="meter-head"><span>Caffeine</span><span id="caf-t"></span></div><div class="bar"><i id="caf-b"></i></div></div>
+    <div class="meter"><div class="meter-head"><span>Sanity</span><span id="san-t"></span></div><div class="bar"><i id="san-b"></i></div></div>
+  </div>
+  <div class="body">
+    <div class="view">
+      <div class="mapbox" id="mapbox"><pre id="map" aria-label="Map"></pre></div>
+      <div class="log" id="log" aria-live="polite"></div>
+    </div>
+    <div class="controls" id="controls">
+      <div class="prompt" id="prompt-row"><span id="prompt"></span><span class="meta" id="meta"></span><button id="cancel" type="button" hidden>Cancel</button></div>
+      <div class="pockets" id="pockets"></div>
+      <div class="thumbs">
+        <div class="pad" id="pad">
+          <span></span><button type="button" data-dx="0" data-dy="-1" aria-label="Up">&#9650;</button><span></span>
+          <button type="button" data-dx="-1" data-dy="0" aria-label="Left">&#9664;</button>
+          <button type="button" class="wait" id="wait" aria-label="Wait a turn">WAIT</button>
+          <button type="button" data-dx="1" data-dy="0" aria-label="Right">&#9654;</button>
+          <span></span><button type="button" data-dx="0" data-dy="1" aria-label="Down">&#9660;</button><span></span>
+        </div>
+        <div class="acts">
+          <button type="button" class="lift" id="b-lift">LIFT<span class="sub">take it down</span></button>
+          <button type="button" id="b-lash">LASH<span class="sub">cable, 2 tiles</span></button>
+          <button type="button" id="b-drop">DROP<span class="sub">free a pocket</span></button>
+          <button type="button" id="b-menu">HELP<span class="sub">or abandon</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="sheet" id="sheet" hidden><div class="sheet-inner" id="sheet-inner"></div></div>
+
+<script>
+// Brython is a Python interpreter written in JavaScript; the game itself is
+// the same Python package the desktop version runs (nightshift/*.py).
+// Where the nightshift/ package lives: next to the page when published, one
+// level up when served from the repo as web/index.html. Absolute, because
+// Brython resolves relative entries against its own script's folder.
+window.NS_PYPATH = new URL(/\/web\/(index\.html)?$/.test(location.pathname) ? ".." : ".", location.href).href.replace(/\/$/, "");
+const KEYS = { save: "nightshift.save.v1", scores: "nightshift.scores.v1" };
+const COLORS = ["normal", "dim", "memory", "player", "angry", "cert", "printer", "phish", "boss",
+  "spam", "item", "coffee", "money", "good", "bad", "info", "warn", "wall", "floor", "desk", "rack",
+  "door", "locked", "lift", "jam", "telegraph", "title"];   // must match nightshift/web.py
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k) { try { return localStorage.getItem(k) || ""; } catch (e) { return ""; } },
+  set(k, v) { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch (e) {} },
+};
+let view = null;
+let hotData = null;
+
+function bootError(msg) {
+  const el = $("boot-msg");
+  el.className = "err";
+  el.textContent = msg;
+}
+window.addEventListener("error", (e) => { if (!view) bootError("The building failed to load: " + (e.message || e)); });
+
+// ---------------------------------------------------------------- bridge
+function persist(p) {
+  if (!p) return;
+  if ("save" in p) store.set(KEYS.save, p.save);
+  if ("scores" in p) store.set(KEYS.scores, p.scores);
+}
+function act(action) {
+  if (!window.nsHandle) return;
+  action.view = [cell.cols, cell.rows];
+  const out = JSON.parse(window.nsHandle(JSON.stringify(action)));
+  persist(out.persist);
+  render(out.view);
+}
+window.nsReady = function () {
+  const save = (hotData && hotData.save) || store.get(KEYS.save);
+  render(JSON.parse(window.nsInit(store.get(KEYS.scores), save)));
+  $("boot").hidden = true;
+};
+function saveNow() {
+  if (window.nsForceSave) persist(JSON.parse(window.nsForceSave()));
+}
+document.addEventListener("visibilitychange", () => { if (document.hidden) saveNow(); });
+window.addEventListener("pagehide", saveNow);
+window.claude?.hot?.snapshot?.(() => { saveNow(); return { save: store.get(KEYS.save) }; });
+
+// ---------------------------------------------------------------- rendering
+const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const cssColor = (name) => `var(--c-${COLORS.includes(name) ? name : "normal"})`;
+let cell = { w: 9, h: 18, cols: 25, rows: 17, cx: 0, cy: 0 };
+
+function measure() {
+  const box = $("mapbox").getBoundingClientRect();
+  const probe = document.createElement("span");
+  probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre;font-family:var(--font-map);line-height:1.18";
+  // Big enough to read on a phone; aim to show most of the 17-tile field of view.
+  let size = Math.min(22, box.width / (21 * 0.6), box.height / (15 * 1.18));
+  size = Math.max(11, Math.floor(size));
+  probe.style.fontSize = size + "px";
+  probe.textContent = "MMMMMMMMMM";
+  document.body.appendChild(probe);
+  const r = probe.getBoundingClientRect();
+  probe.remove();
+  $("map").style.fontSize = size + "px";
+  cell.w = r.width / 10;
+  cell.h = r.height;
+  cell.cols = Math.max(9, Math.floor((box.width - 4) / cell.w));
+  cell.rows = Math.max(7, Math.floor((box.height - 4) / cell.h));
+}
+
+function drawMap(m) {
+  // Python sends the window around the player (always centred on them).
+  cell.cx = m.ox; cell.cy = m.oy;
+  const out = [];
+  for (let sy = 0; sy < m.glyphs.length; sy++) {
+    const g = m.glyphs[sy], c = m.colors[sy];
+    let line = "", run = "", runCode = null;
+    const flush = () => {
+      if (!run) return;
+      const name = COLORS[runCode.charCodeAt(0) - 97] || "normal";
+      line += run.trim() ? `<span style="color:${cssColor(name)}">${esc(run)}</span>` : run;
+      run = "";
+    };
+    for (let sx = 0; sx < g.length; sx++) {
+      const ch = g[sx], code = c[sx];
+      if (code !== runCode && ch !== " ") { flush(); runCode = code; }
+      run += ch;
+      if (runCode === null) runCode = code;
+    }
+    flush();
+    out.push(line);
+  }
+  $("map").innerHTML = out.join("\n");
+}
+
+function meter(id, [v, max]) {
+  $(id + "-t").textContent = `${v}/${max}`;
+  const b = $(id + "-b");
+  const f = max ? v / max : 0;
+  b.style.width = Math.max(0, Math.min(100, f * 100)) + "%";
+  b.className = f > 0.6 ? "" : f > 0.3 ? "warn" : "bad";
+}
+
+function renderHud(v) {
+  const h = v.hud;
+  $("floor").textContent = h.floor;
+  $("floors").textContent = h.floors;
+  $("clock").textContent = h.clock;
+  $("chips").innerHTML = h.statuses.map(([t, c]) => `<span class="chip" style="color:${cssColor(c)}">${esc(t)}</span>`).join("");
+  meter("hp", h.hp); meter("caf", h.caf); meter("san", h.san);
+  $("meta").innerHTML = `<b>${esc(h.weapon)}</b> · <b style="color:var(--c-money)">$${h.tickets}</b> · ${h.inventory.length}/${h.pockets} pockets · seed ${h.seed}`;
+  $("pockets").innerHTML = h.inventory.length
+    ? h.inventory.map((it, i) => `<button type="button" class="slot" data-slot="${i}"><span class="g" style="color:${cssColor(it.color)}">${esc(it.glyph)}</span><span class="n">${esc(it.label)}</span><span class="k">${i + 1}</span></button>`).join("")
+    : `<span class="none">Empty pockets. Walk over loot to pick it up.</span>`;
+  $("log").innerHTML = v.log.slice(-4).map(([t, c, fresh]) =>
+    `<div class="${fresh ? "fresh" : ""}" style="${fresh ? `--line-fresh:${cssColor(c === "normal" ? "normal" : c)}` : ""}">${esc(t)}</div>`).join("");
+  $("b-lift").classList.toggle("ready", h.on_lift);
+  $("b-lash").disabled = !h.can_lash;
+  $("b-drop").disabled = !h.inventory.length;
+  const aiming = v.mode === "aim", picking = v.mode === "drop";
+  $("controls").classList.toggle("aiming", aiming);
+  $("pockets").classList.toggle("pick", picking);
+  $("prompt").textContent = v.prompt || "";
+  $("prompt").hidden = !v.prompt;
+  $("meta").hidden = !!v.prompt;
+  $("cancel").hidden = !(aiming || picking);
+  drawMap(v.map);
+}
+
+function choiceButton(c, i, extra = "") {
+  const g = c.glyph ? `<span class="g" style="color:${cssColor(c.color)}">${esc(c.glyph)}</span>` : "<span></span>";
+  const sub = c.sub ? `<small>${esc(c.sub)}</small>` : "";
+  const price = c.price != null ? `<span class="price">${c.price} $</span>` : "<span></span>";
+  const cls = c.color === "bad" ? "danger" : (i === 0 && !c.price && !c.glyph ? "primary" : "");
+  return `<button type="button" class="choice ${cls}" data-choice="${i}" ${c.enabled === false ? "disabled" : ""} ${extra}>${g}<span>${esc(c.label)}${sub}</span>${price}</button>`;
+}
+
+function scoresTable(entries, rank) {
+  if (!entries || !entries.length) return `<p class="empty-note">No shifts on record yet. Be the first to suffer.</p>`;
+  const rows = entries.map((e, i) => `<tr class="${i + 1 === rank ? "me" : ""}"><td class="num">${i + 1}</td><td class="num">${e.score}</td><td>F${e.floor} ${esc(e.clock || "")}</td><td>${esc(e.won ? "Handover" : (e.cause || "?"))}</td><td class="num">${e.seed}</td></tr>`).join("");
+  return `<div style="overflow-x:auto"><table class="scores"><thead><tr><th>#</th><th>Score</th><th>Reached</th><th>Outcome</th><th>Seed</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+const LEGEND = [["@", "player", "you"], ["U", "angry", "Angry User"], ["P", "printer", "Rogue Printer"],
+  ["c", "cert", "Expired Cert"], ["e", "phish", "Phishing Email"], ["X", "boss", "Exchange server"],
+  ["%", "jam", "paper jam"], [">", "lift", "lift"], ["$", "money", "ticket closures"],
+  ["!", "coffee", "coffee / drinks"], ["+", "locked", "locked door"], ["*", "telegraph", "incoming!"]];
+
+function renderTitle(v) {
+  const t = v.title;
+  const resume = t.resume ? `<button type="button" class="choice primary" id="resume"><span></span><span>Resume shift<small>${esc(t.resume)}</small></span><span></span></button>` : "";
+  $("sheet-inner").innerHTML = `
+    <div class="logo-clock">19:00 &rarr; 07:00</div>
+    <h1 class="logo">NIGHT<br>SHIFT<span>_</span></h1>
+    <p>You are the only IT tech in the building. Twelve floors, twelve hours, one handover at 07:00. Survive the Angry Users, the printers and whatever has happened to the Exchange server.</p>
+    <div class="choices">${resume}</div>
+    <form class="seed-row" id="start-form">
+      <label for="seed">Seed (optional)<input id="seed" name="seed" inputmode="numeric" pattern="[0-9]*" placeholder="random" autocomplete="off"></label>
+      <button type="submit" class="choice ${t.resume ? "" : "primary"}" style="flex:1 1 9rem"><span></span><span>${t.resume ? "New shift" : "Clock in"}</span><span></span></button>
+    </form>
+    <div class="kicker">Top shifts on this phone</div>
+    ${scoresTable(t.scores)}
+    <div class="kicker">On the map</div>
+    <div class="legend">${LEGEND.map(([g, c, n]) => `<div><b style="color:${cssColor(c)}">${esc(g)}</b> ${esc(n)}</div>`).join("")}</div>`;
+  $("start-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    act({ type: "start", seed: $("seed").value });
+  });
+  if (t.resume) $("resume").addEventListener("click", () => act({ type: "resume" }));
+}
+
+function renderPanel(v) {
+  const p = v.panel;
+  let html = "";
+  if (p.kicker) html += `<div class="kicker">${esc(p.kicker)}</div>`;
+  html += `<h2>${esc(p.title)}</h2>`;
+  if (p.ticket) {
+    const ok = v.mode === "end" && p.title === "Handover complete";
+    html += `<div class="ticket ${ok ? "ok" : ""}"><div class="num">${esc(p.ticket.number)}</div><dl>${p.ticket.fields.map(([k, val]) => `<dt>${esc(k)}</dt><dd>${esc(val)}</dd>`).join("")}</dl></div>`;
+  }
+  for (const [text, color] of p.lines || []) {
+    html += `<p style="color:${color === "normal" ? "var(--fg)" : cssColor(color)}">${esc(text)}</p>`;
+  }
+  if (p.scores) html += `<div class="kicker">Top shifts on this phone</div>${scoresTable(p.scores, p.rank)}`;
+  html += `<div class="choices">${(p.choices || []).map((c, i) => choiceButton(c, i)).join("")}</div>`;
+  if (p.leave) html += `<div class="leave-bar"><button type="button" class="leave" id="leave">${esc(p.leave)}</button></div>`;
+  $("sheet-inner").innerHTML = html;
+  $("sheet-inner").querySelectorAll("[data-choice]").forEach((b) => b.addEventListener("click", () => {
+    const index = Number(b.dataset.choice);
+    act(v.mode === "shop" ? { type: "buy", index } : { type: "choose", index });
+  }));
+  if (p.leave) $("leave").addEventListener("click", () => act({ type: "leave" }));
+}
+
+function render(v) {
+  const prevMode = view && view.mode;
+  view = v;
+  if (v.hud) {
+    $("app").hidden = false;
+    const cols = cell.cols, rows = cell.rows;
+    measure();
+    // First game view, or the phone rotated: ask for a map window that fits.
+    if (cols !== cell.cols || rows !== cell.rows) return act({ type: "noop" });
+  }
+  const sheetModes = ["title", "help", "quit", "event", "notice", "shop", "end"];
+  const sheet = sheetModes.includes(v.mode);
+  $("app").hidden = v.mode === "title";
+  if (v.hud) renderHud(v);
+  $("sheet").hidden = !sheet;
+  if (sheet) {
+    v.mode === "title" ? renderTitle(v) : renderPanel(v);
+    if (prevMode !== v.mode || v.mode !== "shop") $("sheet").scrollTop = 0;
+  }
+}
+
+// ---------------------------------------------------------------- input
+function dir(dx, dy) { act({ type: "dir", dx, dy }); }
+const playing = () => view && (view.mode === "play" || view.mode === "aim");
+
+// D-pad: press and hold to keep walking.
+let holdTimer = null;
+function stopHold() { clearTimeout(holdTimer); holdTimer = null; }
+$("pad").querySelectorAll("[data-dx]").forEach((b) => {
+  b.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    const dx = Number(b.dataset.dx), dy = Number(b.dataset.dy);
+    stopHold();
+    dir(dx, dy);
+    const repeat = (delay) => {
+      holdTimer = setTimeout(() => {
+        if (!view || view.mode !== "play") return stopHold();
+        dir(dx, dy);
+        repeat(150);
+      }, delay);
+    };
+    if (view && view.mode === "play") repeat(380);
+  });
+  ["pointerup", "pointercancel", "pointerleave"].forEach((t) => b.addEventListener(t, stopHold));
+  b.addEventListener("click", (e) => { if (e.detail === 0) dir(Number(b.dataset.dx), Number(b.dataset.dy)); });
+});
+$("wait").addEventListener("click", () => act({ type: "wait" }));
+$("b-lift").addEventListener("click", () => act({ type: "lift" }));
+$("b-lash").addEventListener("click", () => act({ type: "lash" }));
+$("b-drop").addEventListener("click", () => act({ type: "drop" }));
+$("b-menu").addEventListener("click", () => act({ type: "help" }));
+$("cancel").addEventListener("click", () => act({ type: "cancel" }));
+$("pockets").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-slot]");
+  if (b) act({ type: "slot", slot: Number(b.dataset.slot) });
+});
+
+// Map: swipe to move, or tap a side of yourself.
+let touchStart = null;
+$("mapbox").addEventListener("pointerdown", (e) => { touchStart = { x: e.clientX, y: e.clientY }; });
+$("mapbox").addEventListener("pointerup", (e) => {
+  if (!touchStart || !playing()) return;
+  let dx = e.clientX - touchStart.x, dy = e.clientY - touchStart.y;
+  touchStart = null;
+  if (Math.hypot(dx, dy) < 24) {
+    // a tap: direction from the player's cell to the tapped point
+    const rect = $("map").getBoundingClientRect();
+    const px = rect.left + (view.map.px - cell.cx + 0.5) * cell.w;
+    const py = rect.top + (view.map.py - cell.cy + 0.5) * cell.h;
+    dx = e.clientX - px; dy = e.clientY - py;
+    if (Math.abs(dx) < cell.w * 0.8 && Math.abs(dy) < cell.h * 0.8) return act({ type: "wait" });
+  }
+  if (Math.abs(dx) > Math.abs(dy)) dir(Math.sign(dx), 0); else dir(0, Math.sign(dy));
+});
+
+// Keyboard, for iPads with keyboards and desktops.
+const KEYDIRS = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+  w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0] };
+document.addEventListener("keydown", (e) => {
+  if (!view || e.target.tagName === "INPUT" || e.metaKey || e.ctrlKey) return;
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  if (KEYDIRS[k] && playing()) { e.preventDefault(); return dir(...KEYDIRS[k]); }
+  if (view.mode === "play" || view.mode === "aim" || view.mode === "drop") {
+    if (k === " " || k === "." || k === "z") { e.preventDefault(); return act({ type: "wait" }); }
+    if (k === "e" || k === ">") return act({ type: "lift" });
+    if (k === "f") return act({ type: "lash" });
+    if (k === "x") return act({ type: "drop" });
+    if (k === "?") return act({ type: "help" });
+    if (k === "q") return act({ type: "quit" });
+    if (k === "Escape") return act({ type: "cancel" });
+    if (/^[1-9]$/.test(k)) return act({ type: "slot", slot: Number(k) - 1 });
+  } else if (!$("sheet").hidden && /^[1-9]$/.test(k)) {
+    const b = $("sheet-inner").querySelector(`[data-choice="${Number(k) - 1}"]`);
+    if (b && !b.disabled) b.click();
+  } else if (view.mode === "shop" && (k === "Escape" || k === "Enter")) {
+    act({ type: "leave" });
+  }
+});
+
+window.addEventListener("resize", () => { if (view && view.hud) act({ type: "noop" }); });
+
+function start(data) {
+  // Brython runs the text/python script by itself once the page has loaded.
+  hotData = data || null;
+}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/brython@3.14.3/brython.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/brython@3.14.3/brython_stdlib.js"></script>
+<script type="text/python">
+import json
+import sys
+from browser import window
+
+sys.path.insert(0, window.NS_PYPATH)
+from nightshift import web  # noqa: E402
+
+app = None
+
+
+def init(scores_json, save_json):
+    global app
+    app = web.WebApp(scores_json or "", save_json or "")
+    return json.dumps(app.view())
+
+
+def handle(action_json):
+    app.handle(json.loads(action_json))
+    return json.dumps({"view": app.view(), "persist": app.take_persist()})
+
+
+def force_save():
+    return json.dumps(app.force_save() if app else {})
+
+
+window.nsInit = init
+window.nsHandle = handle
+window.nsForceSave = force_save
+window.nsReady()
+</script>
+<script>
+if (typeof brython === "undefined") {
+  bootError("Couldn't load the Python runtime (Brython) from cdn.jsdelivr.net. Check your connection and reload.");
+} else if (window.claude?.hot?.ready) {
+  window.claude.hot.ready(start);
+} else {
+  start(window.claude?.hot?.data ?? {});
+}
+</script>

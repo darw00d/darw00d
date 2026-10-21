@@ -1,8 +1,6 @@
 """Loot: what it is, what it does, and where it turns up."""
 
-import random
-
-from . import combat, mapgen
+from . import combat, mapgen, seeding
 
 PASSWORDS = ["Adm1n!2019", "Summer2024!", "Password123", "Welcome1", "letmein", "Qwerty!23"]
 
@@ -181,7 +179,7 @@ def lash(game, direction):
 
 def scatter(gmap, seed, floor, occupied):
     """Return FloorItems for a new floor. `occupied` is a set of blocked positions."""
-    rng = random.Random(f"{seed}:items:{floor}")
+    rng = seeding.rng(seed, "items", floor)
     out = []
     taken = set(occupied) | {gmap.start, gmap.lift}
     boss = gmap.lift is None

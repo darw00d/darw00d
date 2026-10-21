@@ -1,6 +1,6 @@
 """Turns a finished run into a service desk ticket."""
 
-import random
+from . import seeding
 
 RESOLUTIONS = [
     "Closed - user error",
@@ -23,6 +23,10 @@ def cause_text(game):
     return f"Downed by {_a(source)}"
 
 
+def _n(count, noun):
+    return f"{count} {noun}{'' if count == 1 else 's'}"
+
+
 def _a(source):
     if source.startswith(("a ", "an ", "the ", "caffeine")):
         return source
@@ -31,7 +35,7 @@ def _a(source):
 
 def incident_ticket(game):
     """Returns (number, list of (field, value)) for a death."""
-    rng = random.Random(f"{game.seed}:ticket:{game.turn}")
+    rng = seeding.rng(game.seed, "ticket", game.turn)
     number = f"INC{rng.randint(1, 9999999):07d}"
     source, kind = game.cause or ("unknown causes", "hp")
     room = game.gmap.room_at(*game.player.pos)
@@ -49,8 +53,8 @@ def incident_ticket(game):
         ("Opened", f"{game.clock} by Night Shift Monitoring"),
         ("Priority", rng.choice(["P4 - Low", "P5 - Whenever", "P4 - Low (raised by tech: P1)"])),
         ("Description", desc),
-        ("Work notes", f"Closed {game.player.kills} other tickets beforehand. "
-                       f"{game.player.tickets} ticket closures unclaimed."),
+        ("Work notes", f"Closed {_n(game.player.kills, 'other ticket')} beforehand. "
+                       f"{_n(game.player.tickets, 'ticket closure')} unclaimed."),
         ("Assigned to", "Service Desk (the tech)"),
         ("Resolution", rng.choice(RESOLUTIONS)),
     ]

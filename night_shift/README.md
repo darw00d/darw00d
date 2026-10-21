@@ -41,6 +41,21 @@ python3 -m nightshift --seed 1234          # replayable run: same seed, same bui
 python3 -m nightshift --start-floor 12     # practice: jump straight to the boss (not scored)
 ```
 
+### On a phone or tablet
+
+`web/index.html` is a touch version of the same game. It runs the same
+Python package in the browser through [Brython](https://brython.info), so
+gameplay, seeds and saves match the terminal version. It has a D-pad you can
+hold to keep walking, swipe/tap-to-move on the map, tap-to-use pockets,
+autosave (iOS often reloads background tabs; you'll get a "Resume shift"
+button), and high scores kept on the device.
+
+To run it yourself, serve this folder and open `/web/`:
+
+```bash
+python3 -m http.server 8000      # then visit http://<your-computer>:8000/web/
+```
+
 Use a terminal of at least 80x24. The seed is shown in the sidebar and on the
 death screen. Press **R** there to replay the same seed.
 
@@ -113,6 +128,8 @@ store them somewhere else.
 | `ui.py` | All curses rendering |
 | `report.py` / `scores.py` | Death ticket, high score file |
 | `flavour.py` | The jokes |
+| `web.py` | The browser version's screen flow (used by `web/index.html`) |
+| `savegame.py` / `seeding.py` | JSON saves for the browser; seeds that match across Python runtimes |
 
 The run seed drives everything. Each floor's layout, spawns and loot come from
 their own RNG derived from the seed, so a seed always gives the same building.

@@ -3,9 +3,7 @@
 Pure logic: the UI shows the text and passes back the player's choice.
 """
 
-import random
-
-from . import items
+from . import items, seeding
 
 
 class Event:
@@ -144,7 +142,7 @@ EVENTS = [
 
 def roll_event(game):
     """Pick the event for the lift ride after the current floor, or None."""
-    rng = random.Random(f"{game.seed}:event:{game.floor}")
+    rng = seeding.rng(game.seed, "event", game.floor)
     if rng.random() < 0.3:
         return None
     return rng.choice(EVENTS)
@@ -164,7 +162,7 @@ SHOP_QUIPS = [
 
 class Shop:
     def __init__(self, game):
-        rng = random.Random(f"{game.seed}:shop:{game.floor}")
+        rng = seeding.rng(game.seed, "shop", game.floor)
         pool = [k for k in SHOP_POOL
                 if not (k == "cable" and game.player.weapon and game.player.weapon.key == "cable")]
         self.stock = [items.make(k) for k in rng.sample(pool, 5)]
