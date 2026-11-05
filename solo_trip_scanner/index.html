@@ -1,0 +1,1056 @@
+<title>Solo Trip Scanner</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: a departure-board header, one search strip, then a filter rail beside a results column per tab. */
+:root{
+  --bg:#eef1f4; --surface:#ffffff; --raised:#f7f9fb; --ink:#17222c; --muted:#56636f; --line:#d3dbe2;
+  --accent:#0d5c63; --accent-ink:#ffffff; --accent-soft:#d9ecee;
+  --tag:#f2b23a; --tag-ink:#2a1d00; --warn:#b4441c; --warn-soft:#fbe6dc; --good:#2f7d4f; --good-soft:#dff1e6;
+  --chip:#e4eaef;
+  --f-display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f151b; --surface:#17202a; --raised:#1c2732; --ink:#e5ecf2; --muted:#94a2af; --line:#2a3743;
+  --accent:#57b8bf; --accent-ink:#06282b; --accent-soft:#163a3e;
+  --tag:#e3a43a; --tag-ink:#231700; --warn:#f08a5d; --warn-soft:#3a2219; --good:#6cc28e; --good-soft:#173525;
+  --chip:#22303c; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f151b; --surface:#17202a; --raised:#1c2732; --ink:#e5ecf2; --muted:#94a2af; --line:#2a3743;
+  --accent:#57b8bf; --accent-ink:#06282b; --accent-soft:#163a3e;
+  --tag:#e3a43a; --tag-ink:#231700; --warn:#f08a5d; --warn-soft:#3a2219; --good:#6cc28e; --good-soft:#173525;
+  --chip:#22303c; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.45}
+.wrap{max-width:1240px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px}
+h1,h2,h3{font-family:var(--f-display);font-weight:700;letter-spacing:.01em;text-wrap:balance;margin:0}
+h1{font-size:2.1rem;text-transform:uppercase;line-height:1}
+h2{font-size:1.35rem;text-transform:uppercase}
+h3{font-size:1.1rem}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.small{font-size:.82rem}
+a{color:var(--accent)}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.top{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end;justify-content:space-between;margin-bottom:16px}
+.top p{margin:6px 0 0;max-width:60ch;color:var(--muted)}
+.label{font-family:var(--f-display);text-transform:uppercase;letter-spacing:.08em;font-size:.78rem;font-weight:600;color:var(--muted)}
+/* search strip */
+form.search{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;display:grid;gap:14px}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field input,.field select{border:1px solid var(--line);background:var(--raised);border-radius:6px;padding:8px 10px;min-width:0;width:100%}
+.modes{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.toggle{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:5px 12px;background:var(--raised);cursor:pointer;user-select:none}
+.toggle input{accent-color:var(--accent);margin:0}
+.btn{border:0;border-radius:6px;padding:10px 18px;background:var(--accent);color:var(--accent-ink);font-weight:600;cursor:pointer}
+.btn:disabled{opacity:.55;cursor:progress}
+.btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent);padding:6px 12px}
+.btn.small{padding:5px 10px;font-size:.82rem}
+.searchrow{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+/* source board */
+.board{margin-top:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
+@media (max-width:560px){.board{grid-template-columns:1fr 1fr}.src{padding:6px 8px}.src b{font-size:.8rem}}
+.src{display:flex;gap:10px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-width:0}
+.dot{width:10px;height:10px;border-radius:50%;margin-top:5px;flex:none;background:var(--chip);border:1px solid var(--line)}
+.src[data-s="run"] .dot{background:var(--tag);animation:pulse 1s infinite alternate}
+.src[data-s="ok"] .dot{background:var(--good);border-color:var(--good)}
+.src[data-s="err"] .dot{background:var(--warn);border-color:var(--warn)}
+.src[data-s="skip"] .dot{background:transparent}
+.src b{font-weight:600;display:block;font-size:.88rem}
+.src span{font-size:.78rem;color:var(--muted);overflow-wrap:anywhere}
+@keyframes pulse{to{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.src[data-s="run"] .dot{animation:none}}
+.banner{margin-top:14px;padding:10px 14px;border-radius:8px;background:var(--warn-soft);color:var(--ink);border:1px solid var(--warn)}
+/* summary */
+.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:18px 0 6px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-width:0}
+.stat .v{font-family:var(--f-mono);font-size:1.35rem;font-weight:600}
+.stat .s{font-size:.8rem;color:var(--muted)}
+/* tabs */
+.tabs{display:flex;gap:4px;margin-top:18px;border-bottom:2px solid var(--line);overflow-x:auto}
+.tab{background:none;border:0;padding:10px 14px;font-family:var(--f-display);font-weight:600;font-size:1rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;white-space:nowrap}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.tab .n{font-family:var(--f-mono);font-size:.8rem;background:var(--chip);border-radius:999px;padding:1px 7px;margin-left:4px}
+.panel{padding-top:16px}
+.cols{display:grid;grid-template-columns:260px minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:820px){.cols{grid-template-columns:minmax(0,1fr)}}
+/* filters */
+details.filters{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;position:sticky;top:calc(env(safe-area-inset-top,0px) + 10px)}
+@media (max-width:820px){details.filters{position:static}}
+details.filters summary{cursor:pointer;font-family:var(--f-display);font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.fgroup{display:flex;flex-direction:column;gap:6px;padding:10px 0;border-top:1px solid var(--line)}
+.fgroup:first-of-type{border-top:0}
+.fgroup input[type=number],.fgroup select,.fgroup input[type=text]{border:1px solid var(--line);background:var(--raised);border-radius:6px;padding:6px 8px;width:100%}
+.fgroup input[type=range]{width:100%;accent-color:var(--accent)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:.8rem;border-radius:999px;padding:3px 9px;background:var(--chip);cursor:pointer;user-select:none}
+.chip input{margin:0;accent-color:var(--accent)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+/* results */
+.reshead{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-bottom:10px}
+.list{display:flex;flex-direction:column;gap:10px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px 16px}
+@media (max-width:560px){.card{grid-template-columns:minmax(0,1fr)}}
+.card.picked{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
+.legs{display:flex;flex-direction:column;gap:6px;min-width:0}
+.leg{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center}
+.code{font-family:var(--f-mono);font-weight:600;font-size:1.05rem}
+.time{font-family:var(--f-mono);font-size:.82rem;color:var(--muted)}
+.line{height:1px;background:var(--line);position:relative}
+.line i{position:absolute;left:50%;top:-9px;transform:translateX(-50%);font-style:normal;font-size:.72rem;background:var(--surface);padding:0 6px;color:var(--muted);white-space:nowrap}
+.meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.pill{font-size:.74rem;border-radius:4px;padding:2px 7px;background:var(--chip);white-space:nowrap}
+.pill.good{background:var(--good-soft);color:var(--good)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.tag{background:var(--tag);color:var(--tag-ink);font-weight:600}
+.price{text-align:right;display:flex;flex-direction:column;gap:6px;align-items:flex-end;min-width:150px}
+@media (max-width:560px){.price{align-items:stretch;text-align:left}}
+.big{font-family:var(--f-mono);font-size:1.45rem;font-weight:600;line-height:1}
+.offers{display:flex;flex-direction:column;gap:3px;width:100%}
+.offer{display:flex;justify-content:space-between;gap:10px;font-size:.8rem;align-items:baseline}
+.offer a{white-space:nowrap}
+.offer.best{font-weight:600}
+.score{font-family:var(--f-mono);font-size:.75rem;border:1px solid var(--accent);color:var(--accent);border-radius:4px;padding:1px 6px}
+.acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.empty{background:var(--surface);border:1px dashed var(--line);border-radius:10px;padding:22px;color:var(--muted)}
+.empty ul{margin:8px 0 0;padding-left:18px}
+.hname{font-weight:600;font-size:1rem;overflow-wrap:anywhere}
+.rooms{grid-column:1/-1;border-top:1px solid var(--line);padding-top:8px;display:flex;flex-direction:column;gap:4px;font-size:.84rem}
+.rooms .r{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+/* budget */
+.bgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+@media (max-width:820px){.bgrid{grid-template-columns:minmax(0,1fr)}}
+.box{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;min-width:0}
+.bar{display:flex;height:22px;border-radius:5px;overflow:hidden;margin:12px 0;background:var(--chip)}
+.bar span{height:100%}
+table.bt{width:100%;border-collapse:collapse;font-size:.9rem}
+table.bt td{padding:5px 0;border-bottom:1px solid var(--line)}
+table.bt td:last-child{text-align:right;font-family:var(--f-mono)}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.trend{display:flex;flex-direction:column;gap:4px;font-size:.85rem}
+.links{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.links a{display:block;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px;text-decoration:none;color:var(--ink)}
+.links a b{color:var(--accent)}
+.note{font-size:.8rem;color:var(--muted);margin-top:8px}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="label">Every connected travel search · one list · priced for one</div>
+      <h1>Solo Trip Scanner</h1>
+      <p>Searches Kiwi.com, Expedia, lastminute.com, LetsFG, Booking.com, Tripadvisor and trivago together, merges duplicates, and prices everything for a single traveller.</p>
+    </div>
+  </header>
+
+  <form class="search" id="searchForm" autocomplete="off">
+    <div class="fields">
+      <label class="field"><span class="label">From</span><input id="from" required placeholder="City or airport code" value="London"></label>
+      <label class="field"><span class="label">To</span><input id="to" required placeholder="City or airport code" value="Lisbon"></label>
+      <label class="field"><span class="label">Depart / check in</span><input id="depart" type="date" required></label>
+      <label class="field"><span class="label">Return / check out</span><input id="ret" type="date"></label>
+      <label class="field"><span class="label">Travellers</span><select id="adults"><option value="1" selected>1 · solo</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></label>
+      <label class="field"><span class="label">Currency</span><select id="currency"><option>GBP</option><option>EUR</option><option>USD</option></select></label>
+      <label class="field"><span class="label">Your bags</span><select id="bags"><option value="none">Personal item only</option><option value="cabin" selected>+ cabin bag</option><option value="checked">+ checked bag</option></select></label>
+    </div>
+    <div class="searchrow">
+      <div class="modes" role="group" aria-label="What to search">
+        <span class="label">Search</span>
+        <label class="toggle"><input type="checkbox" id="mFlights" checked> Flights</label>
+        <label class="toggle"><input type="checkbox" id="mStays" checked> Stays</label>
+        <label class="toggle"><input type="checkbox" id="mPack" checked> Flight + hotel</label>
+        <label class="toggle"><input type="checkbox" id="mTrend" checked> Price trend</label>
+      </div>
+      <button class="btn" id="goBtn" type="submit">Search all sources</button>
+    </div>
+  </form>
+
+  <div id="banner" class="banner" hidden></div>
+  <div class="board" id="board" aria-live="polite"></div>
+  <div class="summary" id="summary"></div>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="t-flights" aria-selected="true" data-tab="flights">Flights<span class="n" id="n-flights">0</span></button>
+    <button class="tab" role="tab" id="t-stays" aria-selected="false" data-tab="stays">Stays<span class="n" id="n-stays">0</span></button>
+    <button class="tab" role="tab" id="t-pack" aria-selected="false" data-tab="pack">Flight + hotel<span class="n" id="n-pack">0</span></button>
+    <button class="tab" role="tab" id="t-rail" aria-selected="false" data-tab="rail">Trains &amp; coaches</button>
+    <button class="tab" role="tab" id="t-budget" aria-selected="false" data-tab="budget">Trip budget</button>
+  </div>
+
+  <!-- FLIGHTS -->
+  <section class="panel" id="p-flights" role="tabpanel">
+    <div class="cols">
+      <details class="filters" open>
+        <summary>Flight filters</summary>
+        <div class="fgroup"><span class="label">Sources</span><div class="chips" id="ff-src"></div></div>
+        <div class="fgroup"><span class="label">Sort by</span>
+          <select id="ff-sort"><option value="score">Solo score</option><option value="price">Price incl. bags</option><option value="dur">Shortest</option><option value="dep">Earliest departure</option></select></div>
+        <div class="fgroup"><span class="label">Max price incl. bags <b class="mono" id="ff-maxv"></b></span><input type="range" id="ff-max" min="0" max="100" value="100"></div>
+        <div class="fgroup"><span class="label">Stops</span>
+          <select id="ff-stops"><option value="9">Any</option><option value="0">Direct only</option><option value="1">Up to 1 stop</option></select></div>
+        <div class="fgroup"><span class="label">Leave between (hour)</span><div class="row2"><input type="number" id="ff-dep0" min="0" max="23" value="0" aria-label="Earliest departure hour"><input type="number" id="ff-dep1" min="0" max="23" value="23" aria-label="Latest departure hour"></div></div>
+        <div class="fgroup"><label class="chip"><input type="checkbox" id="ff-late"> Hide arrivals 23:00–05:59</label>
+          <label class="chip"><input type="checkbox" id="ff-self"> Hide self-transfer tickets</label>
+          <label class="chip"><input type="checkbox" id="ff-multi"> Seen on 2+ sites</label></div>
+        <div class="fgroup"><span class="label">Max journey (hours, each way)</span><input type="number" id="ff-dur" min="1" max="48" placeholder="No limit"></div>
+        <div class="fgroup"><span class="label">Departure airports</span><div class="chips" id="ff-air"></div></div>
+        <div class="fgroup"><span class="label">Airlines</span><div class="chips" id="ff-al"></div></div>
+      </details>
+      <div><div class="reshead"><span class="muted small" id="fl-count"></span></div><div class="list" id="fl-list"></div></div>
+    </div>
+  </section>
+
+  <!-- STAYS -->
+  <section class="panel" id="p-stays" role="tabpanel" hidden>
+    <div class="cols">
+      <details class="filters" open>
+        <summary>Stay filters</summary>
+        <div class="fgroup"><span class="label">Sources</span><div class="chips" id="hf-src"></div></div>
+        <div class="fgroup"><span class="label">Sort by</span>
+          <select id="hf-sort"><option value="score">Solo score</option><option value="price">Price per night</option><option value="rating">Guest rating</option><option value="dist">Closest to centre</option><option value="nsrc">Most sites compared</option></select></div>
+        <div class="fgroup"><span class="label">Max per night <b class="mono" id="hf-maxv"></b></span><input type="range" id="hf-max" min="0" max="100" value="100"></div>
+        <div class="fgroup"><span class="label">Min guest rating (out of 10)</span><select id="hf-rating"><option value="0">Any</option><option value="7">7+</option><option value="8">8+</option><option value="8.5">8.5+</option><option value="9">9+</option></select></div>
+        <div class="fgroup"><span class="label">Property type</span><div class="chips" id="hf-type"></div></div>
+        <div class="fgroup"><span class="label">Max distance from centre (km)</span><input type="number" id="hf-dist" min="0" step="0.5" placeholder="No limit"></div>
+        <div class="fgroup"><span class="label">Min stars</span><select id="hf-stars"><option value="0">Any</option><option value="2">2+</option><option value="3">3+</option><option value="4">4+</option><option value="5">5</option></select></div>
+        <div class="fgroup"><label class="chip"><input type="checkbox" id="hf-cancel"> Free cancellation only</label>
+          <label class="chip"><input type="checkbox" id="hf-multi"> Compared on 2+ sites</label></div>
+        <div class="fgroup"><span class="label">Name contains</span><input type="text" id="hf-q" placeholder="e.g. Baixa"></div>
+      </details>
+      <div><div class="reshead"><span class="muted small" id="st-count"></span></div><div class="list" id="st-list"></div></div>
+    </div>
+  </section>
+
+  <!-- PACKAGES -->
+  <section class="panel" id="p-pack" role="tabpanel" hidden>
+    <div class="cols">
+      <details class="filters" open>
+        <summary>Package filters</summary>
+        <div class="fgroup"><span class="label">Sort by</span><select id="pf-sort"><option value="price">Price</option><option value="rating">Guest rating</option><option value="dist">Closest to centre</option></select></div>
+        <div class="fgroup"><label class="chip"><input type="checkbox" id="pf-direct"> Direct flights only</label><label class="chip"><input type="checkbox" id="pf-cancel"> Cancellable stay only</label></div>
+        <div class="fgroup"><span class="label">Max total</span><input type="number" id="pf-max" min="0" placeholder="No limit"></div>
+      </details>
+      <div><div class="reshead"><span class="muted small" id="pk-count"></span></div><div class="list" id="pk-list"></div></div>
+    </div>
+  </section>
+
+  <!-- RAIL -->
+  <section class="panel" id="p-rail" role="tabpanel" hidden>
+    <div class="box">
+      <h2>Trains &amp; coaches</h2>
+      <p class="muted" style="max-width:65ch">None of your connected services sells rail or coach tickets, so there is nothing live to merge here. These open each planner with your route filled in where the site allows it.</p>
+      <div class="links" id="railLinks"></div>
+      <p class="note">To add live rail fares to this page, connect a rail or coach booking service in claude.ai Settings → Connectors and ask Claude to wire it in.</p>
+    </div>
+  </section>
+
+  <!-- BUDGET -->
+  <section class="panel" id="p-budget" role="tabpanel" hidden>
+    <div class="bgrid">
+      <div class="box">
+        <h2>Your trip</h2>
+        <p class="small muted">Tap “Use in budget” on a flight and a stay. Everything is per person.</p>
+        <div id="bPicks"></div>
+        <div class="fgroup"><span class="label">Daily spend (per day)</span>
+          <div class="row2">
+            <label class="small">Food &amp; drink<input type="number" id="bFood" min="0" value="35"></label>
+            <label class="small">Local transport<input type="number" id="bLocal" min="0" value="8"></label>
+            <label class="small">Sights &amp; activities<input type="number" id="bAct" min="0" value="20"></label>
+            <label class="small">Days<input type="number" id="bDays" min="1" value="3"></label>
+          </div></div>
+        <div class="fgroup"><span class="label">One-off costs</span>
+          <div class="row2">
+            <label class="small">Airport transfers (both ways)<input type="number" id="bTransfer" min="0" value="15"></label>
+            <label class="small">Travel insurance<input type="number" id="bIns" min="0" value="12"></label>
+          </div></div>
+      </div>
+      <div class="box">
+        <h2>Cost breakdown</h2>
+        <div class="big" id="bTotal" style="margin-top:10px">—</div>
+        <div class="small muted" id="bPerDay"></div>
+        <div class="bar" id="bBar"></div>
+        <table class="bt" id="bTable"></table>
+        <p class="note" id="bNote"></p>
+      </div>
+    </div>
+    <div class="box" style="margin-top:16px"><h2>Shortlist</h2><div id="pins" class="list" style="margin-top:10px"></div></div>
+  </section>
+</div>
+
+<script>
+(() => {
+"use strict";
+/* ---------- connectors ---------- */
+const SV = {
+  kiwi: "Kiwi.com", exp: "Expedia", lm: "lastminute.com",
+  lfg: "LetsFG Book the best flights or hotels", bk: "Booking.com", ta: "Tripadvisor", tv: "Trivago"
+};
+const SRC = { // label per result source
+  kiwi:"Kiwi.com", exp:"Expedia", lm:"lastminute.com", lfg:"LetsFG", bk:"Booking.com", ta:"Tripadvisor", tv:"trivago"
+};
+const JOBS = [
+  {id:"f-kiwi", src:"kiwi", kind:"flights", label:"Kiwi.com · flights"},
+  {id:"f-exp", src:"exp", kind:"flights", label:"Expedia · flights"},
+  {id:"f-lm", src:"lm", kind:"flights", label:"lastminute.com · flights"},
+  {id:"f-lfg", src:"lfg", kind:"flights", label:"LetsFG · flights"},
+  {id:"h-bk", src:"bk", kind:"stays", label:"Booking.com · stays"},
+  {id:"h-exp", src:"exp", kind:"stays", label:"Expedia · stays"},
+  {id:"h-ta", src:"ta", kind:"stays", label:"Tripadvisor · stays"},
+  {id:"h-tv", src:"tv", kind:"stays", label:"trivago · stays"},
+  {id:"h-lm", src:"lm", kind:"stays", label:"lastminute.com · stays"},
+  {id:"h-lfg", src:"lfg", kind:"stays", label:"LetsFG · stays"},
+  {id:"p-lm", src:"lm", kind:"pack", label:"lastminute.com · flight + hotel"},
+  {id:"t-tv", src:"tv", kind:"trend", label:"trivago · price trend"}
+];
+
+/* ---------- reference data ---------- */
+// city: [IATA city/airport code, lat, lon]
+const CITIES = {
+  "london":["LON",51.5074,-0.1278],"manchester":["MAN",53.4808,-2.2426],"edinburgh":["EDI",55.9533,-3.1883],"glasgow":["GLA",55.8642,-4.2518],
+  "birmingham":["BHX",52.4862,-1.8904],"bristol":["BRS",51.4545,-2.5879],"dublin":["DUB",53.3498,-6.2603],"belfast":["BFS",54.5973,-5.9301],
+  "lisbon":["LIS",38.7223,-9.1393],"porto":["OPO",41.1579,-8.6291],"faro":["FAO",37.0194,-7.9304],"madrid":["MAD",40.4168,-3.7038],
+  "barcelona":["BCN",41.3874,2.1686],"seville":["SVQ",37.3891,-5.9845],"valencia":["VLC",39.4699,-0.3763],"malaga":["AGP",36.7213,-4.4214],
+  "palma":["PMI",39.5696,2.6502],"paris":["PAR",48.8566,2.3522],"nice":["NCE",43.7102,7.262],"lyon":["LYS",45.764,4.8357],
+  "amsterdam":["AMS",52.3676,4.9041],"brussels":["BRU",50.8503,4.3517],"berlin":["BER",52.52,13.405],"munich":["MUC",48.1351,11.582],
+  "hamburg":["HAM",53.5511,9.9937],"frankfurt":["FRA",50.1109,8.6821],"cologne":["CGN",50.9375,6.9603],"vienna":["VIE",48.2082,16.3738],
+  "prague":["PRG",50.0755,14.4378],"budapest":["BUD",47.4979,19.0402],"krakow":["KRK",50.0647,19.945],"warsaw":["WAW",52.2297,21.0122],
+  "zurich":["ZRH",47.3769,8.5417],"geneva":["GVA",46.2044,6.1432],"rome":["ROM",41.9028,12.4964],"milan":["MIL",45.4642,9.19],
+  "venice":["VCE",45.4408,12.3155],"florence":["FLR",43.7696,11.2558],"naples":["NAP",40.8518,14.2681],"athens":["ATH",37.9838,23.7275],
+  "copenhagen":["CPH",55.6761,12.5683],"stockholm":["STO",59.3293,18.0686],"oslo":["OSL",59.9139,10.7522],"helsinki":["HEL",60.1699,24.9384],
+  "reykjavik":["REK",64.1466,-21.9426],"tallinn":["TLL",59.437,24.7536],"riga":["RIX",56.9496,24.1052],"vilnius":["VNO",54.6872,25.2797],
+  "ljubljana":["LJU",46.0569,14.5058],"zagreb":["ZAG",45.815,15.9819],"split":["SPU",43.5081,16.4402],"dubrovnik":["DBV",42.6507,18.0944],
+  "istanbul":["IST",41.0082,28.9784],"marrakech":["RAK",31.6295,-7.9811],"new york":["NYC",40.7128,-74.006],"boston":["BOS",42.3601,-71.0589],
+  "chicago":["CHI",41.8781,-87.6298],"los angeles":["LAX",34.0522,-118.2437],"san francisco":["SFO",37.7749,-122.4194],"toronto":["YTO",43.6532,-79.3832],
+  "montreal":["YMQ",45.5017,-73.5673],"mexico city":["MEX",19.4326,-99.1332],"tokyo":["TYO",35.6762,139.6503],"seoul":["SEL",37.5665,126.978],
+  "bangkok":["BKK",13.7563,100.5018],"singapore":["SIN",1.3521,103.8198],"hong kong":["HKG",22.3193,114.1694],"dubai":["DXB",25.2048,55.2708],
+  "sydney":["SYD",-33.8688,151.2093],"melbourne":["MEL",-37.8136,144.9631],"auckland":["AKL",-36.8485,174.7633],"cape town":["CPT",-33.9249,18.4241],
+  "bali":["DPS",-8.65,115.2167],"hanoi":["HAN",21.0278,105.8342],"kuala lumpur":["KUL",3.139,101.6869],"buenos aires":["BUE",-34.6037,-58.3816]
+};
+const CODE2CITY = Object.fromEntries(Object.entries(CITIES).map(([k,v])=>[v[0],k]));
+// Approximate FX against USD, only used for sources that answer in another currency (labelled "≈").
+const FX = {USD:1, GBP:0.79, EUR:0.92};
+const SYM = {GBP:"£", EUR:"€", USD:"$"};
+const COLORS = ["var(--accent)","var(--tag)","var(--good)","var(--warn)","#7b6cd9","var(--muted)","#c45e9a"];
+
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const norm = s => String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().trim();
+const titleCase = s => s.replace(/\b\w/g, c=>c.toUpperCase());
+const num = v => { if (v==null) return NaN; if (typeof v==="number") return v; const m=String(v).replace(/,/g,"").match(/-?\d+(\.\d+)?/); return m?parseFloat(m[0]):NaN; };
+const fx = (amt, from, to) => (from===to||!FX[from]||!FX[to]) ? amt : amt / FX[from] * FX[to];
+const money = (v, cur, approx) => isFinite(v) ? `${approx?"≈":""}${SYM[cur]||cur+" "}${v>=100?Math.round(v).toLocaleString():v.toFixed(2).replace(/\.00$/,"")}` : "—";
+const hhmm = t => { // accepts "6:55 AM", "2026-12-04T06:55:00", "06:55"
+  if (!t) return ""; let m = String(t).match(/(\d{1,2}):(\d{2})\s*([AP]M)?/i); if (!m) return "";
+  let h = +m[1]; const ap = (m[3]||"").toUpperCase(); if (ap==="PM"&&h<12) h+=12; if (ap==="AM"&&h===12) h=0;
+  return String(h).padStart(2,"0")+":"+m[2];
+};
+const hour = t => t ? +t.slice(0,2) : NaN;
+const durMin = s => { if (s==null) return NaN; if (typeof s==="number") return s; const str=String(s);
+  const h=str.match(/(\d+)\s*h/i), m=str.match(/(\d+)\s*m/i); if (h||m) return (h?+h[1]*60:0)+(m?+m[1]:0); return NaN; };
+const fmtDur = m => isFinite(m) ? `${Math.floor(m/60)}h ${String(m%60).padStart(2,"0")}m` : "";
+const ddmmyyyy = iso => iso.split("-").reverse().join("/");
+const mdY = iso => { const [y,m,d]=iso.split("-"); return `${m}/${d}/${y}`; };
+const addDays = (iso,n) => { const d=new Date(iso+"T12:00:00"); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); };
+const nightsBetween = (a,b) => Math.max(1, Math.round((new Date(b+"T12:00:00")-new Date(a+"T12:00:00"))/864e5));
+const km = (a,b,c,d) => { const R=6371, r=x=>x*Math.PI/180, dl=r(c-a), dn=r(d-b);
+  const h=Math.sin(dl/2)**2+Math.cos(r(a))*Math.cos(r(c))*Math.sin(dn/2)**2; return 2*R*Math.asin(Math.sqrt(h)); };
+const median = a => { const s=[...a].filter(isFinite).sort((x,y)=>x-y); return s.length? s[Math.floor(s.length/2)] : NaN; };
+const store = { get(k,d){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):d; }catch{ return d; } },
+                set(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch{} } };
+
+/* ---------- state ---------- */
+const S = { q:null, flights:[], stays:[], pack:[], trend:null, status:{}, center:null,
+  budget:{flight:null, stay:null}, pins: store.get("sts-pins", []), mcp:null, run:0 };
+
+/* ---------- MCP plumbing ---------- */
+let mcpReady = (async () => { try { return window.claude?.use ? await window.claude.use("mcp") : null; } catch { return null; } })();
+
+function errText(e, server){
+  const c = e?.code;
+  const map = {
+    server_not_connected: `Not connected. Add ${server} in claude.ai Settings → Connectors.`,
+    needs_reauth: `Sign-in expired. Reconnect ${server} in claude.ai Settings → Connectors.`,
+    selection_required: `You have more than one ${server} connector. Choose one when claude.ai asks.`,
+    not_in_manifest: `Not allowed for this page. Turn ${server} on in this page's Permissions menu.`,
+    approval_required: `Waiting for your approval to use ${server}.`,
+    blocked_by_policy: `Your organisation blocks this ${server} tool.`,
+    server_unavailable: `${server} did not answer. Try again in a minute.`,
+    cancelled: `Search took too long and was stopped.`,
+    tool_error: `${server} reported: ${String(e?.message||"an error").slice(0,140)}`,
+    not_granted: `Live search is not available in this view.`,
+    capability_disabled: `Live search is not available in this view.`
+  };
+  return map[c] || `${server}: ${String(e?.message||"unexpected error").slice(0,140)}`;
+}
+async function call(srcKey, tool, input, {timeout=120000}={}){
+  const mcp = S.mcp; const server = SV[srcKey];
+  const once = () => mcp.callTool(server, tool, input, {cache:false, signal: (AbortSignal.timeout? AbortSignal.timeout(timeout): undefined)});
+  try { return await once(); }
+  catch(e){
+    if (e?.retryable){ await new Promise(r=>setTimeout(r, Math.min(e.retryAfterMs||0, 15000) + 800 + Math.random()*1500)); return await once(); }
+    throw e;
+  }
+}
+function payloadOf(res){
+  if (res?.payload && typeof res.payload === "object") return res.payload;
+  for (const b of res?.content||[]) if (b.type==="text"){ try { const j=JSON.parse(b.text); if (j && typeof j==="object") return j; } catch{} }
+  return typeof res?.payload === "string" ? res.payload : null;
+}
+function textOf(res){
+  if (typeof res?.payload === "string") return res.payload;
+  return (res?.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n");
+}
+
+/* ---------- status board ---------- */
+function setStatus(id, s, msg){ S.status[id] = {s, msg}; renderBoard(); }
+function renderBoard(){
+  const q = S.q;
+  $("#board").innerHTML = JOBS.map(j=>{
+    const st = S.status[j.id] || {s: q?"skip":"idle", msg: q?"Not searched":"Ready"};
+    return `<div class="src" data-s="${st.s}"><span class="dot" aria-hidden="true"></span><div style="min-width:0"><b>${esc(j.label)}</b><span>${esc(st.msg)}</span></div></div>`;
+  }).join("");
+}
+
+/* ---------- location resolution ---------- */
+async function resolvePlace(text){
+  const t = text.trim(); const k = norm(t);
+  if (/^[a-z]{3}$/i.test(t)) { const code=t.toUpperCase(); const city = CODE2CITY[code]; const c = city?CITIES[city]:null;
+    return {code, city: city?titleCase(city):code, lat:c?.[1], lon:c?.[2]}; }
+  const hit = CITIES[k] || CITIES[k.split(",")[0].trim()];
+  if (hit) return {code:hit[0], city:titleCase(k.split(",")[0]), lat:hit[1], lon:hit[2]};
+  let code = null;
+  try { const r = payloadOf(await call("lfg","find_airports",{query:t},{timeout:30000}));
+        code = r?.locations?.find(l=>l.iata)?.iata || null; } catch {}
+  return {code, city:t, lat:undefined, lon:undefined};
+}
+
+/* ---------- flight parsers ---------- */
+function mkFlight(src, o){
+  // o: {price, cur, approx, link, airline, out:{from,to,dep,arr,date,dur,stops,nums}, ret, self, refundable, bags:{cabin,checked,included}}
+  const key = `${o.out.from}${o.out.dep}|${o.ret? o.ret.from+o.ret.dep : "-"}`;
+  return {key, airline:o.airline, out:o.out, ret:o.ret, self:!!o.self, refundable:o.refundable,
+    offers:[{src, price:o.price, approx:!!o.approx, link:o.link, bags:o.bags||null, note:o.note||""}]};
+}
+function parseKiwi(p, cur){
+  return (p?.itineraries||[]).map(it=>{
+    const leg = L => L && ({from:L.from, to:L.to, dep:hhmm(L.departureTime), arr:hhmm(L.arrivalTime), date:(L.departureTime||"").slice(0,10),
+      dur:Math.round((L.durationSeconds||0)/60), stops:L.stops||0, nums:(L.segments||[]).map(s=>s.flightNumber).join(" ")});
+    const al = [...new Set([...(it.outbound?.segments||[]),...(it.inbound?.segments||[])].map(s=>s.carrierName))].join(" / ");
+    const selfT = [...(it.outbound?.segments||[])].length>1 && new Set(it.outbound.segments.map(s=>s.carrier)).size>1;
+    return mkFlight("kiwi",{price:it.price, cur, link:it.bookingUrl, airline:al, out:leg(it.outbound), ret:leg(it.inbound), self:selfT,
+      bags:{included:true, note:`Price includes your bags (${it.baggage?.cabinBag||0} cabin, ${it.baggage?.checkedBag||0} checked)`}});
+  });
+}
+function parseLmFlights(p, cur){
+  return (p?.flights||[]).map(f=>{
+    const seg = s => { const m=String(s||"").match(/([A-Z]{3})\s+(\d{1,2}:\d{2})\s*→\s*([A-Z]{3})\s+(\d{1,2}:\d{2})/); return m?{from:m[1],dep:hhmm(m[2]),to:m[3],arr:hhmm(m[4])}:null; };
+    const o = seg(f.outbound), r = seg(f.return); if (!o) return null;
+    const direct = /both direct/i.test(f.stops||"") ; const st = direct?0:(num(f.stops)||1);
+    const pc = (f.price_amount!=null? f.price_amount/100 : num(f.price));
+    const pcur = p.currency || cur;
+    return mkFlight("lm",{price:fx(pc,pcur,cur), approx:pcur!==cur, link:f.deeplink, airline:f.airline,
+      out:{...o, dur:durMin(f.duration_out), stops:st}, ret:r?{...r, dur:durMin(f.duration_ret), stops:st}:null,
+      bags:{note:"Bag prices not given by lastminute.com"}});
+  }).filter(Boolean);
+}
+function parseExpFlights(p, cur, q){
+  return (p?.options||[]).map(op=>{
+    const sl = op.slices||[];
+    const L = s => s && ({from:s.departure_airport_code, to:s.arrival_airport_code, dep:hhmm(s.departure_time), arr:hhmm(s.arrival_time),
+      date:s.departure_date, dur:durMin(s.flight_duration), stops:s.number_of_stops||0, nums:(s.legs||[]).map(l=>l.marketing_airline_code+l.flight_number).join(" ")});
+    const out = sl.find(s=>s.direction==="outbound")||sl[0]; const ret = sl.find(s=>s.direction==="inbound"||s.direction==="return")||(sl.length>1?sl[1]:null);
+    const tp = op.price?.total_price; const pcur = tp?.currency||"USD";
+    const al = [...new Set(sl.flatMap(s=>(s.legs||[]).map(l=>l.marketing_airline_name)))].join(" / ");
+    const bf = op.fare_options?.[0]?.baggage_fees||[];
+    const carry = bf.find(b=>b.bag_type==="CARRY_ON"); const first = bf.find(b=>b.bag_type==="FIRST_BAG");
+    const usd = v=>fx(num(v), first?.fees?.currency||"USD", cur);
+    const legs = ret?2:1;
+    const bags = {cabin: carry?.category==="ALLOWED"?0:NaN, checked: first?.fees? usd(first.fees.fixed_charge)*legs : NaN, approx:true,
+      note: [carry?.ui_text?.display_text, first?.ui_text?.display_text].filter(Boolean).join(" · ")};
+    const link = `https://www.expedia.co.uk/Flights-Search?mode=search&trip=${q.ret?"roundtrip":"oneway"}&leg1=from:${q.o.code},to:${q.d.code},departure:${mdY(q.depart)}TANYT${q.ret?`&leg2=from:${q.d.code},to:${q.o.code},departure:${mdY(q.ret)}TANYT`:""}&passengers=adults:${q.adults}&options=cabinclass:economy`;
+    return mkFlight("exp",{price:fx(num(tp?.value),pcur,cur), approx:pcur!==cur, link, airline:al, out:L(out), ret:L(ret),
+      refundable: op.refundable, bags, note: op.fare_options?.[0]?.fare_name||""});
+  }).filter(f=>f.out?.from);
+}
+function parseLfgFlights(text, cur){
+  const out = []; const blocks = text.split(/\n(?=\d+\.\s+[\d.,]+\s+[A-Z]{3}\s)/);
+  for (const b of blocks){
+    const h = b.match(/^\s*\d+\.\s+([\d.,]+)\s+([A-Z]{3})\s+[^—]*—\s*(.+?)\s+—\s+.+?\(([A-Z]{3})\)\s*->\s*.+?\(([A-Z]{3})\)\s+—\s+(.+?),\s*(\d+h\s*\d*m?)/);
+    if (!h) continue;
+    const ob = b.match(/outbound:\s*departs\s+(\S+)\s+(\d{1,2}:\d{2}\s*[AP]M)\s+arrives\s+(\S+)\s+(\d{1,2}:\d{2}\s*[AP]M)/i);
+    const rt = b.match(/return:\s*.+?\(([A-Z]{3})\)\s*->\s*.+?\(([A-Z]{3})\)\s+—\s+.+?\s+—\s+(.+?),\s*(\d+h\s*\d*m?)\s+—\s+departs\s+(\S+)\s+(\d{1,2}:\d{2}\s*[AP]M)\s+arrives\s+(\S+)\s+(\d{1,2}:\d{2}\s*[AP]M)/i);
+    const stopsOf = s => /nonstop/i.test(s)?0:(num(s)||1);
+    const pcur = h[2];
+    const cab = b.match(/Cabin bag \+([\d.]+)/i), chk = b.match(/Checked bag (?:\+|from ~)([\d.]+)/i);
+    const cabIncl = /Cabin bag usually included/i.test(b);
+    const bagsLine = (b.match(/bags:\s*(.+)/)||[])[1]||"";
+    const conv = v => fx(+v, pcur, cur);
+    out.push(mkFlight("lfg",{price:conv(num(h[1])), approx:pcur!==cur, link:(b.match(/link:\s*(\S+)/)||[])[1], airline:h[3],
+      out:{from:h[4], to:h[5], dep:ob?hhmm(ob[2]):"", arr:ob?hhmm(ob[4]):"", date:ob?.[1], dur:durMin(h[7]), stops:stopsOf(h[6]), nums:(b.match(/\n\s*flights:\s*(.+)/)||[])[1]||""},
+      ret: rt?{from:rt[1], to:rt[2], dep:hhmm(rt[6]), arr:hhmm(rt[8]), date:rt[5], dur:durMin(rt[4]), stops:stopsOf(rt[3])}:null,
+      self:/SEPARATE TICKETS|self-transfer/i.test(b), refundable: /NON-REFUNDABLE/.test(b)?false:(/REFUNDABLE/.test(b)?true:undefined),
+      bags:{cabin: cab?conv(cab[1]): (cabIncl?0:NaN), checked: chk?conv(chk[1]):NaN, note: bagsLine.split("|")[0].trim()}}));
+  }
+  return out;
+}
+
+/* ---------- stay parsers ---------- */
+const STOP = new Set(["hotel","hostel","the","by","and","a","an","de","da","do","das","dos","del","la","le","les","el","of","lisboa","boutique","apartments","apartment","suites","guest","house","inn","&"]);
+function hkey(name, city){
+  const c = norm(city).split(/[ ,]/)[0];
+  const toks = norm(name).replace(/[^a-z0-9 ]+/g," ").split(/\s+/).filter(w=>w && !STOP.has(w) && w!==c);
+  return toks.join("") || norm(name).replace(/[^a-z0-9]/g,"");
+}
+function typeOf(raw, name){
+  const s = norm(raw+" "+name);
+  if (/hostel|dorm/.test(s)) return "Hostel";
+  if (/bed and breakfast|b&b|bed_and_breakfast/.test(s)) return "B&B";
+  if (/guest ?house|guest_house|pension|pensao/.test(s)) return "Guest house";
+  if (/apartment|holiday ?home|flat|villa|condo|vr\b|homeboat|loft/.test(s)) return "Apartment";
+  return "Hotel";
+}
+function mkStay(src, o){
+  return {key:hkey(o.name, S.q.d.city), name:o.name, type:typeOf(o.type||"", o.name), stars:o.stars||0,
+    ratings:isFinite(o.rating)?[{src, v:o.rating, n:o.reviews}]:[], lat:o.lat, lon:o.lon, distKm:o.distKm, address:o.address||"",
+    offers:[{src, total:o.total, approx:!!o.approx, link:o.link, cancel:o.cancel, note:o.note||"", extra:o.extra||null}]};
+}
+function parseBooking(p, cur){
+  return (p?.accommodations||[]).filter(a=>a.price?.book).map(a=>mkStay("bk",{name:a.name, type:a.accommodationType, stars:a.rating?.stars,
+    rating:a.rating?.review_score, reviews:a.rating?.number_of_reviews, lat:a.location?.coordinates?.latitude, lon:a.location?.coordinates?.longitude,
+    total:fx(a.price.book, a.price.currency||cur, cur), approx:(a.price.currency||cur)!==cur, link:a.url, address:a.location?.district_name}));
+}
+function parseExpHotels(p, cur){
+  return (p?.data||[]).filter(h=>h.total_price).map(h=>mkStay("exp",{name:h.hotel_name, stars:num(h.star_rating), rating:num(h.guest_rating), reviews:h.guest_review_count,
+    lat:num(h.geo_location?.latitude), lon:num(h.geo_location?.longitude), total:fx(num(h.total_price), h.currency||"USD", cur), approx:(h.currency||"USD")!==cur,
+    link:h.url, note: h.total_strikeout_price?"Discounted":""}));
+}
+function parseTa(p, cur){
+  return (p?.hotels||[]).map(h=>{
+    const pi = h.priceInfo || h.metaResult?.primaryOffers?.[0] || {}; const off = h.metaResult?.primaryOffers?.[0];
+    const base = num(pi.displayPrice); if (!isFinite(base)) return null;
+    const curH = /£/.test(pi.displayPrice)?"GBP":/€/.test(pi.displayPrice)?"EUR":"USD";
+    const total = base + (num(pi.displayTaxesAndFees)||0);
+    const link = off?.commerceUrl ? "https://www.tripadvisor.com"+off.commerceUrl : (h.hotelReviewUrl? "https://www.tripadvisor.com"+h.hotelReviewUrl : null);
+    return mkStay("ta",{name:h.hotelName, rating:isFinite(h.reviewSummary?.rating)? h.reviewSummary.rating*2 : NaN, reviews:h.reviewSummary?.count,
+      lat:h.geocode?.latitude, lon:h.geocode?.longitude, total:fx(total,curH,cur), approx:curH!==cur, link,
+      type:(h.locationV2?.hotelStyleRankings||[]).map(x=>x.styleName).join(" ")});
+  }).filter(Boolean);
+}
+function parseTv(p, cur){
+  return (p?.accommodations||[]).map(a=>{
+    const deals = (a.deals||[]).map(d=>({...d, t:num(d.price_per_stay), c:d.currency||cur})).filter(d=>isFinite(d.t)).sort((x,y)=>x.t-y.t);
+    if (!deals.length) return null; const d = deals[0];
+    const cancel = (d.price_attributes||[]).some(x=>x.id==="freeCancellation");
+    const anyCancel = deals.find(x=>(x.price_attributes||[]).some(y=>y.id==="freeCancellation"));
+    return mkStay("tv",{name:a.accommodation_name, stars:a.hotel_rating, rating:num(a.review_rating), reviews:num(a.review_count), lat:a.latitude, lon:a.longitude,
+      total:fx(d.t,d.c,cur), approx:d.c!==cur, link:d.deal_url, cancel, note:`via ${d.advertiser}${deals.length>1?` · ${deals.length} sites`:""}${(!cancel&&anyCancel)?` · free cancel from ${anyCancel.advertiser} at ${anyCancel.price_per_stay}`:""}`});
+  }).filter(Boolean);
+}
+function parseLmHotels(p, cur, srcKind){
+  return (p?.products_summary||[]).map(h=>mkStay("lm",{name:h.name, stars:h.stars, rating:isFinite(h.rating)&&h.rating>0? h.rating/10 : NaN, reviews:h.reviews,
+    distKm:h.distance_km, total:fx(h.price_total, h.currency||cur, cur), approx:(h.currency||cur)!==cur, cancel:!!h.cancellable,
+    extra:{searchId:p.search_id, hotelId:h.internal_id_hotel, kind:srcKind, direct:h.flight_direct, carrier:h.carrier}}));
+}
+function parseLfgHotels(p, cur){
+  return (p?.hotels||[]).map(h=>{
+    const offs = (h.offers||[]).filter(o=>isFinite(o.price)).sort((a,b)=>a.price-b.price); if (!offs.length) return null;
+    const o = offs[0]; const refund = offs.find(x=>x.refundable);
+    return mkStay("lfg",{name:h.name, stars:h.stars, rating:isFinite(h.google_rating)? h.google_rating*2 : NaN, reviews:h.google_reviews,
+      total:fx(o.price, o.currency||cur, cur), approx:(o.currency||cur)!==cur, cancel:!!o.refundable, link:"https://letsfg.co",
+      address:h.address, type:o.room, note:`${o.room}${o.board?` · ${o.board}`:""}${(!o.refundable&&refund)?` · refundable from ${money(fx(refund.price,refund.currency||cur,cur),cur)}`:""}`});
+  }).filter(Boolean);
+}
+
+/* ---------- merging ---------- */
+function mergeFlights(list){
+  const m = new Map();
+  for (const f of list){
+    const ex = m.get(f.key);
+    if (!ex){ m.set(f.key, f); continue; }
+    ex.offers.push(...f.offers);
+    if (!ex.out.nums && f.out.nums) ex.out.nums = f.out.nums;
+    if (ex.ret && f.ret && !ex.ret.nums && f.ret.nums) ex.ret.nums = f.ret.nums;
+    ex.self = ex.self || f.self; if (ex.refundable==null) ex.refundable=f.refundable;
+    if (!ex.out.dur && f.out.dur) ex.out.dur = f.out.dur;
+  }
+  return [...m.values()];
+}
+function mergeStays(list){
+  const m = new Map();
+  for (const h of list){
+    const ex = m.get(h.key);
+    if (!ex){ m.set(h.key, h); continue; }
+    ex.offers.push(...h.offers); ex.ratings.push(...h.ratings);
+    if (!ex.stars && h.stars) ex.stars = h.stars;
+    if (!isFinite(ex.lat) && isFinite(h.lat)){ ex.lat=h.lat; ex.lon=h.lon; }
+    if (!isFinite(ex.distKm) && isFinite(h.distKm)) ex.distKm = h.distKm;
+    if (ex.type==="Hotel" && h.type!=="Hotel") ex.type = h.type;
+  }
+  return [...m.values()];
+}
+
+/* ---------- derived values ---------- */
+function bagCost(o){
+  // Uses the bag choice made at search time (Kiwi.com prices already include it).
+  const pref = S.q?.bags || "cabin"; const b = o.bags;
+  if (pref==="none" || b?.included) return {v:0, known:true};
+  const x = b?.[pref==="checked" ? "checked" : "cabin"];
+  return isFinite(x) ? {v:x, known:true} : {v:0, known:false};
+}
+function flightBest(f){
+  let best=null;
+  for (const o of f.offers){ const bc = bagCost(o); const t = o.price + bc.v;
+    if (!isFinite(o.price)) continue;
+    if (!best || t < best.t) best = {o, t, bc}; }
+  return best;
+}
+function stayDerived(h){
+  const n = S.q.nights;
+  const offers = h.offers.filter(o=>isFinite(o.total)).sort((a,b)=>a.total-b.total);
+  const best = offers[0];
+  const rs = h.ratings.filter(r=>isFinite(r.v));
+  const rating = rs.length ? rs.reduce((s,r)=>s+r.v,0)/rs.length : NaN;
+  let dist = h.distKm;
+  if (!isFinite(dist) && S.center && isFinite(h.lat)) dist = km(S.center.lat, S.center.lon, h.lat, h.lon);
+  return {best, offers, rating, perNight: best? best.total/n : NaN, dist, cancel: h.offers.some(o=>o.cancel)};
+}
+function pctRank(arr, v, lowGood=true){
+  const s = arr.filter(isFinite).sort((a,b)=>a-b); if (s.length<2 || !isFinite(v)) return .5;
+  const i = s.findIndex(x=>x>=v); const r = (i<0?s.length-1:i)/(s.length-1); return lowGood? 1-r : r;
+}
+
+/* ---------- search ---------- */
+async function runSearch(ev){
+  ev?.preventDefault();
+  const q = {
+    fromText:$("#from").value.trim(), toText:$("#to").value.trim(), depart:$("#depart").value, ret:$("#ret").value,
+    adults:+$("#adults").value, cur:$("#currency").value, bags:$("#bags").value,
+    modes:{flights:$("#mFlights").checked, stays:$("#mStays").checked, pack:$("#mPack").checked, trend:$("#mTrend").checked}
+  };
+  const today = new Date().toISOString().slice(0,10);
+  if (!q.depart || q.depart < today) return showBanner("Pick a departure date from today onwards.");
+  if (q.ret && q.ret <= q.depart) return showBanner("The return date has to be after the departure date.");
+  store.set("sts-form", {from:q.fromText,to:q.toText,depart:q.depart,ret:q.ret,adults:q.adults,cur:q.cur,bags:q.bags});
+  S.mcp = await mcpReady;
+  if (!S.mcp) return showBanner("Live search needs this page open in claude.ai while you are signed in. In this view the connectors cannot be reached.");
+  hideBanner();
+  const run = ++S.run;
+  $("#goBtn").disabled = true; $("#goBtn").textContent = "Searching…";
+  try { const perms = await window.claude.use("permissions"); await perms?.request(["mcp"]).catch(()=>{}); } catch {}
+  q.checkout = q.ret || addDays(q.depart, 3);
+  q.nights = nightsBetween(q.depart, q.checkout);
+  $("#bDays").value = q.nights + 1;
+  S.q = q; S.flights=[]; S.stays=[]; S.pack=[]; S.trend=null; S.status={}; S.center=null; S.budget={flight:null,stay:null};
+  for (const j of JOBS) if (q.modes[j.kind]) setStatus(j.id,"run","Searching…");
+  renderBoard(); renderAll();
+  const [o, d] = await Promise.all([resolvePlace(q.fromText), resolvePlace(q.toText)]);
+  q.o = o; q.d = d;
+  if (isFinite(d.lat)) S.center = {lat:d.lat, lon:d.lon};
+  const tasks = [];
+  const live = () => run === S.run;
+  const job = (id, fn) => tasks.push((async()=>{ try { const r = await fn(); if (live()) setStatus(id,"ok", r); }
+    catch(e){ if (live()) setStatus(id,"err", e?.code? errText(e, SV[JOBS.find(j=>j.id===id).src]) : String(e?.message||e)); } finally { if (live()) renderAll(); } })());
+  const addF = (arr) => { if (!live()) return arr.length; S.flights = mergeFlights([...S.flights.flatMap(f=>f.offers.map(o=>({...f, offers:[o]}))), ...arr]); return arr.length; };
+  const addH = (arr) => { if (!live()) return arr.length; S.stays = mergeStays([...S.stays.flatMap(h=>h.offers.map((o,i)=>({...h, offers:[o], ratings:h.ratings.filter(r=>r.src===o.src)}))), ...arr]); return arr.length; };
+  const needCode = (p) => { if (!p.code) throw new Error(`Could not find an airport code for “${p.city}”. Type its 3-letter code instead.`); };
+
+  if (q.modes.flights){
+    job("f-kiwi", async()=>{ const inp = {flyFrom:o.code||o.city, flyTo:d.code||d.city, departureDate:ddmmyyyy(q.depart), currency:q.cur, adults:q.adults, sort:"price"};
+      if (q.ret) inp.returnDate = ddmmyyyy(q.ret);
+      if (q.bags!=="none") inp.adults_hand_bags = Array(q.adults).fill(q.bags==="cabin"?1:0);
+      if (q.bags==="checked") inp.adults_hold_bags = Array(q.adults).fill(1);
+      const n = addF(parseKiwi(payloadOf(await call("kiwi","search-flight",inp)), q.cur)); return `${n} itineraries`; });
+    job("f-exp", async()=>{ needCode(o); needCode(d);
+      const inp = {origin:o.code, destination:d.code, departure_date:q.depart, adult_count:q.adults, limit:25, sort_type:"PRICE",
+        query_text:`${q.adults===1?"solo ":""}flights ${o.city} to ${d.city}`, user_locale:"en-GB", client_device_info:{device_type:"desktop", agent_name:"ClaudeAI"}};
+      if (q.ret) inp.return_date = q.ret;
+      const n = addF(parseExpFlights(payloadOf(await call("exp","search_flights",inp)), q.cur, q)); return `${n} itineraries (USD, converted)`; });
+    job("f-lm", async()=>{ needCode(o); needCode(d);
+      const inp = {departure:o.code, arrival:d.code, start_date:q.depart, adults:q.adults, max_results:25, language:"en"};
+      if (q.ret) inp.end_date = q.ret;
+      const n = addF(parseLmFlights(payloadOf(await call("lm","search_flights",inp)), q.cur)); return `${n} itineraries`; });
+    job("f-lfg", async()=>{ needCode(o); needCode(d);
+      const inp = {origin:o.code, destination:d.code, date_from:q.depart, adults:q.adults, currency:q.cur, max_results:25, language:"en"};
+      if (q.ret) inp.return_from = q.ret;
+      const s = payloadOf(await call("lfg","search_flights",inp)); const sid = s?.search_id; if (!sid) throw new Error("LetsFG did not start a search.");
+      for (let i=0;i<9;i++){
+        if (!live()) return "Stopped";
+        const t = textOf(await call("lfg","get_flight_results",{search_id:sid, max_results:25, wait_for_all:true},{timeout:90000}));
+        const found = /Found \d+ offers/.test(t);
+        const m = t.match(/(\d+) offers so far, cheapest so far ([\d.]+)/);
+        if (!found){ setStatus("f-lfg","run", m?`Checking hundreds of sites… ${m[1]} offers so far`:"Checking hundreds of sites…"); continue; }
+        const n = addF(parseLfgFlights(t, q.cur)); return `${n} picks from ${(t.match(/Found (\d+) offers/)||[])[1]} offers`;
+      }
+      throw new Error("LetsFG was still searching after 3 minutes.");
+    });
+  }
+  if (q.modes.stays){
+    const stayIn = {checkin:q.depart, checkout:q.checkout};
+    job("h-bk", async()=>{ const p = payloadOf(await call("bk","accommodations_search",{destination:d.city, checkin_date:q.depart, checkout_date:q.checkout,
+        number_of_adults:q.adults, number_of_rooms:1, currency:q.cur, user_country_code:"gb", user_locale:"en-gb", user_query:`${q.adults===1?"Solo traveller ":""}stay in ${d.city}`}));
+      const arr = parseBooking(p, q.cur);
+      if (!S.center){ const la = median(arr.map(h=>h.lat)), lo = median(arr.map(h=>h.lon)); if (isFinite(la)) S.center = {lat:la, lon:lo}; }
+      return `${addH(arr)} stays`; });
+    job("h-exp", async()=>{ const p = payloadOf(await call("exp","search_hotels",{destination:d.city, check_in_date:q.depart, check_out_date:q.checkout,
+        adult_count:q.adults, limit:30, sort_type:"CHEAPEST", query_text:`${q.adults===1?"solo ":""}stay in ${d.city}`, user_locale:"en-GB",
+        client_device_info:{device_type:"desktop", agent_name:"ClaudeAI"}}));
+      return `${addH(parseExpHotels(p, q.cur))} stays (USD, converted)`; });
+    job("h-ta", async()=>{ const p = payloadOf(await call("ta","search_hotels",{location:d.city, checkIn:q.depart, checkOut:q.checkout, guests:q.adults, rooms:1,
+        limit:20, sortBy:"PRICE_LOW_TO_HIGH", pricingMode:"QUICK", mcpServerVersion:{version:"V2026_0327"}, requestContext:{clientType:"DESKTOP"}},{timeout:150000}));
+      if (!S.center && isFinite(p?.searchParameters?.searchGeoData?.lat)) S.center = {lat:p.searchParameters.searchGeoData.lat, lon:p.searchParameters.searchGeoData.lon};
+      return `${addH(parseTa(p, q.cur))} stays (USD, converted)`; });
+    job("h-tv", async()=>{
+      let c = S.center; for (let i=0; !c && i<40; i++){ await new Promise(r=>setTimeout(r,1500)); c = S.center; }
+      if (!c) throw new Error("Needs the destination's map position; none of the other stay searches returned one.");
+      const p = payloadOf(await call("tv","trivago-accommodation-radius-search",{latitude:c.lat, longitude:c.lon, arrival:q.depart, departure:q.checkout,
+        adults:q.adults, rooms:1, currency:q.cur, country:q.cur==="USD"?"US":(q.cur==="EUR"?"IE":"GB"), language:"EN_GB"}));
+      return `${addH(parseTv(p, q.cur))} stays`; });
+    job("h-lm", async()=>{
+      const r = payloadOf(await call("lm","resolve_destination_id",{lang:"en", city_name:d.city}));
+      const id = r?.success ? r.id : (r?.suggestions?.[0]?.id || d.code); if (!id) throw new Error(`lastminute.com does not recognise “${d.city}”.`);
+      const p = payloadOf(await call("lm","search_only_hotel",{destination:String(id), date_from:q.depart, date_to:q.checkout, adults:String(q.adults), max_results:20, sort:"price", lang:"en"}));
+      return `${addH(parseLmHotels(p, q.cur, "hotel"))} stays`; });
+    job("h-lfg", async()=>{
+      const s = payloadOf(await call("lfg","search_hotels",{location:d.city, ...stayIn, adults:q.adults, currency:q.cur, max_results:30, language:"en"}));
+      const sid = s?.search_id; if (!sid) throw new Error("LetsFG did not start a hotel search.");
+      for (let i=0;i<10;i++){
+        if (!live()) return "Stopped";
+        const p = payloadOf(await call("lfg","get_hotel_results",{search_id:sid, max_results:30},{timeout:90000}));
+        if (p?.hotels) return `${addH(parseLfgHotels(p, q.cur))} stays of ${p.hotels_found||"?"} found`;
+        setStatus("h-lfg","run",`Still collecting rates… ${p?.waited_seconds?p.waited_seconds+"s":""}`);
+      }
+      throw new Error("LetsFG was still collecting hotel rates after several minutes.");
+    });
+  }
+  if (q.modes.pack){
+    job("p-lm", async()=>{ needCode(o); needCode(d);
+      const p = payloadOf(await call("lm","search_flight_and_hotel_package",{origin:o.code, destination:d.code, date_from:q.depart, date_to:q.checkout, adults:String(q.adults), max_results:20, sort:"price", lang:"en"}));
+      const arr = parseLmHotels(p, q.cur, "package"); if (live()) S.pack = arr; return `${arr.length} packages`; });
+  }
+  if (q.modes.trend){
+    job("t-tv", async()=>{ const m0 = q.depart.slice(0,7); const e = new Date(q.depart+"T12:00:00"); e.setMonth(e.getMonth()+3);
+      const p = payloadOf(await call("tv","trivago-destination-price-trends",{query:d.city, start_month:m0, end_month:e.toISOString().slice(0,7), currency:q.cur,
+        country:q.cur==="USD"?"US":(q.cur==="EUR"?"IE":"GB"), language:"EN_GB", hotel_rating:{"3star":true}}));
+      if (live()) S.trend = p?.destinations?.[0]?.monthly_prices || null; return S.trend?`${S.trend.length} months`:"No forecast"; });
+  }
+  renderRail();
+  await Promise.allSettled(tasks);
+  if (live()){ $("#goBtn").disabled = false; $("#goBtn").textContent = "Search all sources"; renderAll(); }
+}
+
+/* ---------- lastminute room options (no direct link in search results) ---------- */
+async function lmRooms(stayKey, btn, which){
+  const list = which==="pack" ? S.pack : S.stays;
+  const h = list.find(x=>x.key===stayKey); const off = h?.offers.find(o=>o.src==="lm"); if (!off?.extra) return;
+  const box = btn.closest(".card").querySelector(".rooms"); box.hidden = false; box.innerHTML = `<span class="muted">Loading rooms from lastminute.com…</span>`;
+  try {
+    const p = payloadOf(await call("lm","select_hotel_options",{search_id:+off.extra.searchId, hotel_internal_id:+off.extra.hotelId, date_from:S.q.depart, date_to:S.q.checkout}));
+    const rooms = (p?.room_options||[]).sort((a,b)=>a.price-b.price);
+    if (!rooms.length){ box.innerHTML = `<span class="muted">No rooms returned.</span>`; return; }
+    box.innerHTML = rooms.map(r=>`<div class="r"><span>${esc(r.room_name)} · <span class="muted">${esc(r.cancellation)}</span></span>
+      <span><b class="mono">${money(fx(r.price, r.currency||S.q.cur, S.q.cur), S.q.cur)}</b> <button class="btn ghost small" data-lmlink="${esc(p.pricing_id)}|${esc(r.rate_id)}">Get booking link</button></span></div>`).join("");
+  } catch(e){ box.innerHTML = `<span class="pill warn">${esc(errText(e, SV.lm))}</span>`; }
+}
+async function lmLink(btn){
+  const [pid, rid] = btn.dataset.lmlink.split("|"); btn.disabled = true; btn.textContent = "Getting link…";
+  try { const p = payloadOf(await call("lm","generate_booking_link",{pricing_id:pid, rate_id:rid}));
+    const url = p?.booking_url || p?.url || p?.link || (JSON.stringify(p||"").match(/https:\/\/[^"\s)]+/)||[])[0];
+    if (url){ const a = document.createElement("a"); a.href = url; a.target = "_blank"; a.rel = "noopener"; a.textContent = "Book on lastminute.com ↗"; btn.replaceWith(a); }
+    else { btn.textContent = "No link returned"; }
+  } catch(e){ btn.textContent = errText(e, SV.lm); }
+}
+
+/* ---------- rendering ---------- */
+function renderAll(){ renderSummary(); renderFlights(); renderStays(); renderPack(); renderBudget(); renderPins();
+  $("#n-flights").textContent = S.flights.length; $("#n-stays").textContent = S.stays.length; $("#n-pack").textContent = S.pack.length; }
+function sourceChips(el, keys, prefix){
+  const prev = {}; el.querySelectorAll("input").forEach(i=>prev[i.value]=i.checked);
+  el.innerHTML = keys.map(k=>`<label class="chip"><input type="checkbox" value="${k}" ${prev[k]===false?"":"checked"} data-f="${prefix}"> ${esc(SRC[k])}</label>`).join("");
+}
+function checked(el){ const s = new Set(); el.querySelectorAll("input:checked").forEach(i=>s.add(i.value)); return s; }
+function dynChips(el, values, prefix){
+  const prev = {}; el.querySelectorAll("input").forEach(i=>prev[i.value]=i.checked);
+  el.innerHTML = values.length ? values.map(v=>`<label class="chip"><input type="checkbox" value="${esc(v)}" ${prev[v]===false?"":"checked"} data-f="${prefix}"> ${esc(v)}</label>`).join("") : `<span class="small muted">Appears after a search</span>`;
+}
+
+function renderSummary(){
+  const q = S.q; const el = $("#summary");
+  if (!q){ el.innerHTML = ""; return; }
+  const cur = q.cur;
+  const fb = S.flights.map(f=>({f, b:flightBest(f)})).filter(x=>x.b).sort((a,b)=>a.b.t-b.b.t)[0];
+  const sb = S.stays.map(h=>({h, d:stayDerived(h)})).filter(x=>isFinite(x.d.perNight)).sort((a,b)=>a.d.perNight-b.d.perNight);
+  const good = sb.filter(x=>x.d.rating>=8)[0];
+  const pk = S.pack.map(p=>p.offers[0]).filter(o=>isFinite(o.total)).sort((a,b)=>a.total-b.total)[0];
+  const diy = fb && good ? fb.b.t + good.d.best.total : NaN;
+  const tr = S.trend ? S.trend.map(m=>({m:m.month, v:num(m.star_rating_prices?.[0]?.average_price)})).filter(x=>isFinite(x.v)) : [];
+  const cheapM = tr.slice().sort((a,b)=>a.v-b.v)[0];
+  const mName = ym => new Date(ym+"-15").toLocaleString("en-GB",{month:"long", year:"numeric"});
+  el.innerHTML = [
+    `<div class="stat"><div class="label">Cheapest flight incl. bags</div><div class="v">${fb?money(fb.b.t,cur,fb.b.o.approx):"—"}</div><div class="s">${fb?esc(`${fb.f.airline} · ${SRC[fb.b.o.src]}`):"Waiting for results"}</div></div>`,
+    `<div class="stat"><div class="label">Cheapest stay, 8+ rated</div><div class="v">${good?money(good.d.perNight,cur,good.d.best.approx)+'<span class="small muted"> /night</span>':"—"}</div><div class="s">${good?esc(good.h.name):(sb[0]?`Any rating from ${money(sb[0].d.perNight,cur)}/night`:"Waiting for results")}</div></div>`,
+    `<div class="stat"><div class="label">Build it yourself</div><div class="v">${money(diy,cur,true)}</div><div class="s">Cheapest flight + cheapest 8+ stay, ${q.nights} night${q.nights>1?"s":""}</div></div>`,
+    `<div class="stat"><div class="label">Cheapest flight + hotel deal</div><div class="v">${pk?money(pk.total,cur,pk.approx):"—"}</div><div class="s">${pk?`lastminute.com package${isFinite(diy)?(pk.total<diy?` · ${money(diy-pk.total,cur)} less than building it`:` · ${money(pk.total-diy,cur)} more than building it`):""}`:"Waiting for results"}</div></div>`,
+    tr.length?`<div class="stat"><div class="label">3★ hotels in ${esc(q.d.city)}, avg/night</div><div class="trend">${tr.map(x=>`<div class="offer${x===cheapM?" best":""}"><span>${esc(mName(x.m))}</span><span class="mono">${money(x.v,cur)}${x===cheapM?" · lowest":""}</span></div>`).join("")}</div><div class="s">trivago forecast</div></div>`:""
+  ].join("");
+}
+
+function legHtml(L){
+  if (!L) return "";
+  return `<div class="leg"><div><div class="code">${esc(L.from)}</div><div class="time">${esc(L.dep||"--:--")}</div></div>
+    <div class="line"><i>${L.stops?`${L.stops} stop${L.stops>1?"s":""}`:"direct"}${L.dur?` · ${fmtDur(L.dur)}`:""}</i></div>
+    <div style="text-align:right"><div class="code">${esc(L.to)}</div><div class="time">${esc(L.arr||"--:--")}</div></div></div>`;
+}
+function renderFlights(){
+  const el = $("#fl-list"); const cur = S.q?.cur || "GBP";
+  sourceChips($("#ff-src"), ["kiwi","exp","lm","lfg"], "f");
+  dynChips($("#ff-air"), [...new Set(S.flights.map(f=>f.out.from))].sort(), "fa");
+  dynChips($("#ff-al"), [...new Set(S.flights.flatMap(f=>String(f.airline||"").split(" / ")).filter(Boolean))].sort(), "fl");
+  if (!S.q){ el.innerHTML = emptyState("flights"); $("#fl-count").textContent=""; return; }
+  const srcs = checked($("#ff-src")), airs = checked($("#ff-air")), als = checked($("#ff-al"));
+  const rows = S.flights.map(f=>{
+    const offers = f.offers.filter(o=>srcs.has(o.src));
+    const best = flightBest({...f, offers}); return {f, offers, best};
+  }).filter(r=>r.best);
+  const totals = rows.map(r=>r.best.t), durs = rows.map(r=>(r.f.out.dur||0)+(r.f.ret?.dur||0));
+  const maxAll = Math.max(...totals, 0);
+  const pct = +$("#ff-max").value; const cap = maxAll*pct/100;
+  $("#ff-maxv").textContent = rows.length ? money(cap, cur) : "";
+  const stopsMax = +$("#ff-stops").value, d0 = +$("#ff-dep0").value, d1 = +$("#ff-dep1").value;
+  const late = $("#ff-late").checked, noSelf = $("#ff-self").checked, multi = $("#ff-multi").checked, dmax = num($("#ff-dur").value);
+  const lateArr = L => { const h = hour(L?.arr); return isFinite(h) && (h>=23 || h<6); };
+  let out = rows.filter(({f,best,offers})=>{
+    if (best.t > cap + 0.01) return false;
+    if (Math.max(f.out.stops||0, f.ret?.stops||0) > stopsMax) return false;
+    const h = hour(f.out.dep); if (isFinite(h) && (h<d0 || h>d1)) return false;
+    if (late && (lateArr(f.out) || lateArr(f.ret))) return false;
+    if (noSelf && f.self) return false;
+    if (multi && new Set(offers.map(o=>o.src)).size<2) return false;
+    if (isFinite(dmax) && (f.out.dur>dmax*60 || (f.ret && f.ret.dur>dmax*60))) return false;
+    if (airs.size && !airs.has(f.out.from)) return false;
+    if (als.size && !String(f.airline||"").split(" / ").some(a=>als.has(a))) return false;
+    return true;
+  });
+  out.forEach(r=>{ const dur=(r.f.out.dur||0)+(r.f.ret?.dur||0);
+    const safe = (lateArr(r.f.out)||lateArr(r.f.ret)) ? 0.3 : 1;
+    r.score = Math.round(100*(0.45*pctRank(totals,r.best.t) + 0.2*pctRank(durs,dur) + 0.15*safe + 0.1*(r.f.self?0:1) + 0.1*(Math.max(r.f.out.stops||0,r.f.ret?.stops||0)?0.4:1))); r.dur=dur; });
+  const sort = $("#ff-sort").value;
+  out.sort((a,b)=> sort==="price"? a.best.t-b.best.t : sort==="dur"? a.dur-b.dur : sort==="dep"? String(a.f.out.dep).localeCompare(b.f.out.dep) : b.score-a.score);
+  const cheapest = Math.min(...out.map(r=>r.best.t));
+  $("#fl-count").textContent = `${out.length} of ${rows.length} flight options · ${S.flights.reduce((s,f)=>s+f.offers.length,0)} offers merged from ${new Set(S.flights.flatMap(f=>f.offers.map(o=>o.src))).size} sites`;
+  if (!out.length){ el.innerHTML = `<div class="empty">${rows.length?"No flights match these filters. Loosen the price or time limits.":"No flight results yet."}</div>`; return; }
+  el.innerHTML = out.slice(0,150).map(({f,offers,best,score})=>{
+    const picked = S.budget.flight?.key===f.key;
+    const pills = [
+      best.t===cheapest?`<span class="pill tag">Cheapest</span>`:"",
+      f.self?`<span class="pill warn">Self-transfer · missed connections not protected</span>`:"",
+      (lateArr(f.out)||lateArr(f.ret))?`<span class="pill warn">Late-night arrival</span>`:"",
+      f.refundable===true?`<span class="pill good">Refundable</span>`:(f.refundable===false?`<span class="pill">Non-refundable</span>`:""),
+      new Set(offers.map(o=>o.src)).size>1?`<span class="pill good">Compared on ${new Set(offers.map(o=>o.src)).size} sites</span>`:""
+    ].join("");
+    const bagNote = best.o.bags?.note ? `<div class="small muted">${esc(best.o.bags.note)}</div>` : "";
+    const sorted = offers.slice().sort((a,b)=>(a.price+bagCost(a).v)-(b.price+bagCost(b).v));
+    return `<article class="card${picked?" picked":""}">
+      <div style="min-width:0"><div class="small muted">${esc(f.airline||"")}${f.out.nums?` · <span class="mono">${esc(f.out.nums)}</span>`:""}${f.out.date?` · ${esc(f.out.date)}`:""}</div>
+        <div class="legs">${legHtml(f.out)}${legHtml(f.ret)}</div>
+        <div class="meta">${pills}</div>${bagNote}</div>
+      <div class="price"><span class="score" title="Solo score: price, journey time, arrival hour, ticket safety">Solo ${score}</span>
+        <div class="big">${money(best.t, S.q.cur, best.o.approx)}</div>
+        <div class="small muted">${S.q.adults>1?`total for ${S.q.adults} · `:""}incl. ${S.q.bags==="none"?"no bags":S.q.bags==="cabin"?"cabin bag":"checked bag"}${best.bc.known?"":" (bag price unknown)"}</div>
+        <div class="offers">${sorted.map(o=>{ const bc=bagCost(o); return `<div class="offer${o===best.o?" best":""}"><span>${esc(SRC[o.src])}</span><span class="mono">${money(o.price+bc.v,S.q.cur,o.approx)}${bc.known?"":"+bags"}</span>${o.link?`<a href="${esc(o.link)}" target="_blank" rel="noopener">Open ↗</a>`:""}</div>`; }).join("")}</div>
+        <div class="acts"><button class="btn ghost small" data-pickf="${esc(f.key)}">${picked?"In budget ✓":"Use in budget"}</button><button class="btn ghost small" data-pin="f|${esc(f.key)}" aria-label="Save to shortlist">☆ Save</button></div>
+      </div></article>`;
+  }).join("");
+}
+
+function renderStays(){
+  const el = $("#st-list"); const cur = S.q?.cur || "GBP";
+  sourceChips($("#hf-src"), ["bk","exp","ta","tv","lm","lfg"], "h");
+  dynChips($("#hf-type"), [...new Set(S.stays.map(h=>h.type))].sort(), "ht");
+  if (!S.q){ el.innerHTML = emptyState("stays"); $("#st-count").textContent=""; return; }
+  const srcs = checked($("#hf-src")), types = checked($("#hf-type"));
+  const rows = S.stays.map(h=>{ const hh = {...h, offers:h.offers.filter(o=>srcs.has(o.src))}; return {h:hh, d:stayDerived(hh)}; }).filter(r=>r.d.best);
+  const pns = rows.map(r=>r.d.perNight); const maxAll = Math.max(...pns,0);
+  const cap = maxAll * (+$("#hf-max").value)/100;
+  $("#hf-maxv").textContent = rows.length ? money(cap, cur) : "";
+  const minR = +$("#hf-rating").value, dmax = num($("#hf-dist").value), minS = +$("#hf-stars").value;
+  const onlyCancel = $("#hf-cancel").checked, multi = $("#hf-multi").checked, qtext = norm($("#hf-q").value);
+  let out = rows.filter(({h,d})=>{
+    if (d.perNight > cap + 0.01) return false;
+    if (minR && !(d.rating>=minR)) return false;
+    if (isFinite(dmax) && isFinite(d.dist) && d.dist>dmax) return false;
+    if (minS && !(h.stars>=minS)) return false;
+    if (onlyCancel && !d.cancel) return false;
+    if (multi && new Set(h.offers.map(o=>o.src)).size<2) return false;
+    if (types.size && !types.has(h.type)) return false;
+    if (qtext && !norm(h.name).includes(qtext)) return false;
+    return true;
+  });
+  out.forEach(r=>{ const ds = isFinite(r.d.dist) ? 1-Math.min(r.d.dist,6)/6 : .5; const rs = isFinite(r.d.rating) ? Math.max(0,Math.min(1,(r.d.rating-6)/4)) : .4;
+    r.score = Math.round(100*(0.4*pctRank(pns, r.d.perNight) + 0.35*rs + 0.15*ds + 0.1*(r.d.cancel?1:0))); });
+  const sort = $("#hf-sort").value;
+  out.sort((a,b)=> sort==="price"? a.d.perNight-b.d.perNight : sort==="rating"? (b.d.rating||0)-(a.d.rating||0) : sort==="dist"? (a.d.dist??99)-(b.d.dist??99) : sort==="nsrc"? b.h.offers.length-a.h.offers.length : b.score-a.score);
+  const cheapest = Math.min(...out.map(r=>r.d.perNight));
+  $("#st-count").textContent = `${out.length} of ${rows.length} places · ${S.stays.reduce((s,h)=>s+h.offers.length,0)} prices merged · ${S.q.nights} night${S.q.nights>1?"s":""} for ${S.q.adults===1?"one":S.q.adults}`;
+  if (!out.length){ el.innerHTML = `<div class="empty">${rows.length?"No stays match these filters.":"No stay results yet."}</div>`; return; }
+  el.innerHTML = out.slice(0,200).map(({h,d,score})=>{
+    const picked = S.budget.stay?.key===h.key;
+    const nsrc = new Set(h.offers.map(o=>o.src)).size;
+    const save = d.offers.length>1 ? d.offers[d.offers.length-1].total - d.best.total : 0;
+    const pills = [
+      `<span class="pill">${esc(h.type)}</span>`,
+      h.stars?`<span class="pill">${"★".repeat(Math.round(h.stars))}</span>`:"",
+      isFinite(d.rating)?`<span class="pill ${d.rating>=8.5?"good":""}">${d.rating.toFixed(1)}/10${h.ratings.length>1?` · avg of ${h.ratings.length}`:""}</span>`:"",
+      isFinite(d.dist)?`<span class="pill">${d.dist.toFixed(1)} km from centre</span>`:"",
+      d.cancel?`<span class="pill good">Free cancellation option</span>`:"",
+      d.perNight===cheapest?`<span class="pill tag">Cheapest</span>`:"",
+      nsrc>1?`<span class="pill good">Compared on ${nsrc} sites${save>1?` · save ${money(save,S.q.cur)}`:""}</span>`:""
+    ].join("");
+    return `<article class="card${picked?" picked":""}">
+      <div style="min-width:0"><div class="hname">${esc(h.name)}</div>${h.address?`<div class="small muted">${esc(h.address)}</div>`:""}<div class="meta">${pills}</div></div>
+      <div class="price"><span class="score" title="Solo score: nightly price, guest rating, distance from centre, cancellation">Solo ${score}</span>
+        <div class="big">${money(d.perNight, S.q.cur, d.best.approx)}<span class="small muted"> /night</span></div>
+        <div class="small muted">${money(d.best.total, S.q.cur, d.best.approx)} total · ${S.q.adults===1?"single traveller":S.q.adults+" guests"}</div>
+        <div class="offers">${d.offers.map(o=>`<div class="offer${o===d.best?" best":""}"><span title="${esc(o.note)}">${esc(SRC[o.src])}${o.cancel?" ✓":""}</span><span class="mono">${money(o.total/S.q.nights,S.q.cur,o.approx)}</span>${o.link?`<a href="${esc(o.link)}" target="_blank" rel="noopener">Open ↗</a>`:(o.src==="lm"?`<button class="btn ghost small" data-lmrooms="${esc(h.key)}|stays">Rooms</button>`:"")}</div>`).join("")}</div>
+        ${d.offers.some(o=>o.note)?`<div class="small muted" style="text-align:right">${esc(d.offers.map(o=>o.note).filter(Boolean)[0])}</div>`:""}
+        <div class="acts"><button class="btn ghost small" data-picks="${esc(h.key)}">${picked?"In budget ✓":"Use in budget"}</button><button class="btn ghost small" data-pin="s|${esc(h.key)}">☆ Save</button></div>
+      </div><div class="rooms" hidden></div></article>`;
+  }).join("");
+}
+
+function renderPack(){
+  const el = $("#pk-list");
+  if (!S.q){ el.innerHTML = emptyState("pack"); $("#pk-count").textContent=""; return; }
+  let rows = S.pack.map(p=>({p, o:p.offers[0], r:p.ratings[0]?.v}));
+  if ($("#pf-direct").checked) rows = rows.filter(x=>x.o.extra?.direct);
+  if ($("#pf-cancel").checked) rows = rows.filter(x=>x.o.cancel);
+  const mx = num($("#pf-max").value); if (isFinite(mx)) rows = rows.filter(x=>x.o.total<=mx);
+  const s = $("#pf-sort").value;
+  rows.sort((a,b)=> s==="rating"? (b.r||0)-(a.r||0) : s==="dist"? (a.p.distKm??99)-(b.p.distKm??99) : a.o.total-b.o.total);
+  $("#pk-count").textContent = `${rows.length} flight + hotel packages from lastminute.com · return flights and ${S.q.nights} nights`;
+  if (!rows.length){ el.innerHTML = `<div class="empty">${S.pack.length?"No packages match.":"No packages yet. Packages need airport codes for both places."}</div>`; return; }
+  const fb = S.flights.map(f=>flightBest(f)).filter(Boolean).sort((a,b)=>a.t-b.t)[0];
+  el.innerHTML = rows.map(({p,o,r})=>{
+    const sameStay = S.stays.find(h=>h.key===p.key); const sd = sameStay? stayDerived(sameStay):null;
+    const diy = fb && sd?.best ? fb.t + sd.best.total : NaN;
+    return `<article class="card">
+    <div style="min-width:0"><div class="hname">${esc(p.name)}</div>
+      <div class="meta"><span class="pill">${esc(p.type)}</span>${isFinite(r)?`<span class="pill">${r.toFixed(1)}/10</span>`:""}${isFinite(p.distKm)?`<span class="pill">${p.distKm} km from centre</span>`:""}
+      ${o.extra?.direct?`<span class="pill good">Direct flights${o.extra.carrier?` · ${esc(o.extra.carrier)}`:""}</span>`:`<span class="pill">Flights with stops</span>`}${o.cancel?`<span class="pill good">Cancellable stay</span>`:""}</div>
+      ${isFinite(diy)?`<div class="small muted" style="margin-top:6px">Booking this stay and the cheapest flight separately: ${money(diy,S.q.cur,true)} (${diy>o.total?"package is cheaper":"separate is cheaper"})</div>`:""}</div>
+    <div class="price"><div class="big">${money(o.total,S.q.cur,o.approx)}</div><div class="small muted">flights + ${S.q.nights} nights, ${S.q.adults===1?"one traveller":S.q.adults+" travellers"}</div>
+      <div class="acts"><button class="btn ghost small" data-lmrooms="${esc(p.key)}|pack">Rooms &amp; booking link</button></div></div>
+    <div class="rooms" hidden></div></article>`;
+  }).join("");
+}
+
+function renderRail(){
+  const q = S.q; const f = q?.fromText || $("#from").value, t = q?.toText || $("#to").value, e = encodeURIComponent;
+  const links = [
+    ["Rome2Rio", "Every way to get there: train, coach, ferry, flight, with rough prices", `https://www.rome2rio.com/map/${e(f)}/${e(t)}`],
+    ["Google Maps transit", "Rail and coach routes with times", `https://www.google.com/maps/dir/?api=1&origin=${e(f)}&destination=${e(t)}&travelmode=transit`],
+    ["Trainline", "UK and European rail and coach tickets", "https://www.thetrainline.com/"],
+    ["Omio", "Trains, coaches and flights across Europe", "https://www.omio.co.uk/"],
+    ["The Man in Seat 61", "Step-by-step guides to train travel from the UK and beyond", "https://www.seat61.com/"],
+    ["FlixBus", "Low-cost coaches across Europe", "https://global.flixbus.com/"],
+    ["Interrail", "Rail passes for multi-country solo trips", "https://www.interrail.eu/en"],
+    ["National Rail", "UK train times and fares", "https://www.nationalrail.co.uk/"]
+  ];
+  $("#railLinks").innerHTML = links.map(([n,d,u])=>`<a href="${esc(u)}" target="_blank" rel="noopener"><b>${esc(n)} ↗</b><div class="small muted">${esc(d)}</div></a>`).join("");
+}
+
+function renderBudget(){
+  const q = S.q; const cur = q?.cur || $("#currency").value;
+  const fl = S.budget.flight, st = S.budget.stay;
+  const fb = fl ? flightBest(fl) : null; const sd = st ? stayDerived(st) : null;
+  const ad = q?.adults || 1;
+  $("#bPicks").innerHTML = `
+    <div class="offer"><span><b>Flight</b> · ${fl?esc(`${fl.out.from} → ${fl.out.to} ${fl.out.dep}, ${fl.airline}`):`<span class="muted">none picked</span>`}</span><span class="mono">${fb?money(fb.t/ad,cur,fb.o.approx):"—"}</span></div>
+    <div class="offer"><span><b>Stay</b> · ${st?esc(st.name):`<span class="muted">none picked</span>`}</span><span class="mono">${sd?.best?money(sd.best.total/ad,cur,sd.best.approx):"—"}</span></div>`;
+  const days = +$("#bDays").value || 1;
+  const items = [
+    ["Flights incl. bags", fb ? fb.t/ad : 0],
+    ["Accommodation", sd?.best ? sd.best.total/ad : 0],
+    ["Food & drink", (+$("#bFood").value||0)*days],
+    ["Local transport", (+$("#bLocal").value||0)*days],
+    ["Sights & activities", (+$("#bAct").value||0)*days],
+    ["Airport transfers", +$("#bTransfer").value||0],
+    ["Insurance", +$("#bIns").value||0]
+  ];
+  const total = items.reduce((s,[,v])=>s+v,0);
+  $("#bTotal").textContent = money(total, cur, true);
+  $("#bPerDay").textContent = `${money(total/days, cur, true)} per day over ${days} day${days>1?"s":""} · per person`;
+  $("#bBar").innerHTML = total ? items.map(([n,v],i)=>v>0?`<span title="${esc(n)}" style="width:${(v/total*100).toFixed(2)}%;background:${COLORS[i]}"></span>`:"").join("") : "";
+  $("#bTable").innerHTML = items.map(([n,v],i)=>`<tr><td><span class="sw" style="background:${COLORS[i]}"></span>${esc(n)}</td><td>${money(v,cur)}</td></tr>`).join("") + `<tr><td><b>Total</b></td><td><b>${money(total,cur)}</b></td></tr>`;
+  const ratio = sd?.best && fb ? (sd.best.total/ad)/(fb.t/ad) : NaN;
+  $("#bNote").textContent = (ad===1 && st && st.type!=="Hostel" ? "Travelling alone, you pay the whole room. A hostel private room or a dorm bed usually cuts accommodation by half or more. " : "")
+    + (isFinite(ratio) && ratio>3 ? "Accommodation is your biggest cost: try the Stays “Max per night” slider or a hostel filter." : "")
+    + (fb && !fb.bc.known ? " The chosen flight's bag price is not published by that site, so check it before booking." : "");
+}
+
+function renderPins(){
+  const el = $("#pins");
+  el.innerHTML = S.pins.length ? S.pins.map((p,i)=>`<div class="offer"><span>${esc(p.label)}</span><span class="mono">${esc(p.price)}</span>${p.link?`<a href="${esc(p.link)}" target="_blank" rel="noopener">Open ↗</a>`:""}<button class="btn ghost small" data-unpin="${i}">Remove</button></div>`).join("")
+    : `<p class="small muted">Nothing saved yet. Use “☆ Save” on any flight or stay to keep it here between visits.</p>`;
+}
+
+function emptyState(kind){
+  const list = {flights:["Kiwi.com","Expedia","lastminute.com","LetsFG (hundreds of airlines and travel sites, split tickets)"],
+    stays:["Booking.com","Expedia","Tripadvisor","trivago (compares many booking sites)","lastminute.com","LetsFG"],
+    pack:["lastminute.com flight + hotel packages, compared with booking the same pieces separately"]}[kind];
+  return `<div class="empty"><b>Enter a route and dates, then search.</b> Each search asks all of these at once and merges the same ${kind==="stays"?"property":"flight"} into one row so you see every price side by side:<ul>${list.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
+    <p class="small">Prices are for ${$("#adults").value==="1"?"one traveller":"your group"}. Bag fees are added to flight prices where the site publishes them. The first search asks you to allow each connector.</p></div>`;
+}
+
+/* ---------- UI wiring ---------- */
+function showBanner(t){ const b=$("#banner"); b.textContent=t; b.hidden=false; }
+function hideBanner(){ $("#banner").hidden = true; }
+document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click",()=>selectTab(t.dataset.tab)));
+function selectTab(name){
+  document.querySelectorAll(".tab").forEach(t=>t.setAttribute("aria-selected", String(t.dataset.tab===name)));
+  ["flights","stays","pack","rail","budget"].forEach(n=>$("#p-"+n).hidden = n!==name);
+  try{ sessionStorage.setItem("sts-tab", name); }catch{}
+}
+$("#searchForm").addEventListener("submit", runSearch);
+document.addEventListener("input", e=>{
+  const id = e.target.id || ""; const f = e.target.dataset?.f || "";
+  if (id.startsWith("ff-") || /^f/.test(f)) renderFlights();
+  else if (id.startsWith("hf-") || /^h/.test(f)) renderStays();
+  else if (id.startsWith("pf-")) renderPack();
+  else if (id.startsWith("b") && id!=="bags") renderBudget();
+  if (id==="from"||id==="to") renderRail();
+});
+document.addEventListener("click", e=>{
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.pickf){ const f = S.flights.find(x=>x.key===b.dataset.pickf); S.budget.flight = S.budget.flight?.key===f?.key ? null : f; renderFlights(); renderBudget(); }
+  if (b.dataset.picks){ const h = S.stays.find(x=>x.key===b.dataset.picks); S.budget.stay = S.budget.stay?.key===h?.key ? null : h; renderStays(); renderBudget(); }
+  if (b.dataset.lmrooms){ const [k,w] = b.dataset.lmrooms.split("|"); lmRooms(k, b, w); }
+  if (b.dataset.lmlink) lmLink(b);
+  if (b.dataset.pin){ const [t,k] = b.dataset.pin.split("|"); let item=null;
+    if (t==="f"){ const f=S.flights.find(x=>x.key===k); const bb=f&&flightBest(f); if (bb) item={label:`✈ ${f.out.from}→${f.out.to} ${f.out.date||""} ${f.out.dep} · ${f.airline}`, price:money(bb.t,S.q.cur,bb.o.approx), link:bb.o.link}; }
+    else { const h=S.stays.find(x=>x.key===k); const d=h&&stayDerived(h); if (d?.best) item={label:`🛏 ${h.name} · ${S.q.depart} for ${S.q.nights} nights`, price:money(d.perNight,S.q.cur,d.best.approx)+"/night", link:d.best.link}; }
+    if (item){ S.pins.unshift(item); S.pins = S.pins.slice(0,30); store.set("sts-pins", S.pins); renderPins(); b.textContent = "★ Saved"; } }
+  if (b.dataset.unpin){ S.pins.splice(+b.dataset.unpin,1); store.set("sts-pins", S.pins); renderPins(); }
+});
+
+/* ---------- boot ---------- */
+(function boot(){
+  const saved = store.get("sts-form", null);
+  const d0 = addDays(new Date().toISOString().slice(0,10), 29);
+  $("#depart").value = d0; $("#ret").value = addDays(d0, 3);
+  if (saved){
+    $("#from").value = saved.from||$("#from").value; $("#to").value = saved.to||$("#to").value;
+    if (saved.depart && saved.depart >= new Date().toISOString().slice(0,10)){ $("#depart").value = saved.depart; $("#ret").value = saved.ret||""; }
+    $("#adults").value = String(saved.adults||1); $("#currency").value = saved.cur||"GBP"; $("#bags").value = saved.bags||"cabin";
+  }
+  try{ const t = sessionStorage.getItem("sts-tab"); if (t) selectTab(t); }catch{}
+  renderBoard(); renderRail(); renderAll();
+  mcpReady.then(m=>{ if (!m) showBanner("Live search runs when this page is open in claude.ai while you are signed in and have allowed its connectors. In this view the connectors cannot be reached."); });
+})();
+})();
+</script>
