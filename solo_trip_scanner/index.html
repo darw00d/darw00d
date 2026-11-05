@@ -137,6 +137,15 @@ table.bt td:last-child{text-align:right;font-family:var(--f-mono)}
 .links a{display:block;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px;text-decoration:none;color:var(--ink)}
 .links a b{color:var(--accent)}
 .note{font-size:.8rem;color:var(--muted);margin-top:8px}
+.datestrip{display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:6px}
+.datestrip:empty{display:none}
+.dchip{flex:none;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 10px;cursor:pointer;text-align:left;font-size:.78rem;color:var(--ink)}
+.dchip b{display:block;font-family:var(--f-mono);font-size:.95rem}
+.dchip.low{border-color:var(--good)}
+.dchip.low b{color:var(--good)}
+.dchip[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.dchip[aria-pressed="true"] b{color:var(--accent-ink)}
+s.was{color:var(--muted);font-family:var(--f-mono);font-size:.8rem}
 </style>
 
 <div class="wrap">
@@ -157,12 +166,15 @@ table.bt td:last-child{text-align:right;font-family:var(--f-mono)}
       <label class="field"><span class="label">Travellers</span><select id="adults"><option value="1" selected>1 · solo</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></label>
       <label class="field"><span class="label">Currency</span><select id="currency"><option>GBP</option><option>EUR</option><option>USD</option></select></label>
       <label class="field"><span class="label">Your bags</span><select id="bags"><option value="none">Personal item only</option><option value="cabin" selected>+ cabin bag</option><option value="checked">+ checked bag</option></select></label>
+      <label class="field"><span class="label">Flexible dates</span><select id="flex"><option value="0">Exact dates</option><option value="1">± 1 day</option><option value="2" selected>± 2 days</option><option value="3">± 3 days</option></select></label>
+      <label class="field"><span class="label">Search depth</span><select id="depth"><option value="deep" selected>Deep · extra passes per site</option><option value="std">Quick · one pass per site</option></select></label>
     </div>
     <div class="searchrow">
       <div class="modes" role="group" aria-label="What to search">
         <span class="label">Search</span>
         <label class="toggle"><input type="checkbox" id="mFlights" checked> Flights</label>
         <label class="toggle"><input type="checkbox" id="mStays" checked> Stays</label>
+        <label class="toggle"><input type="checkbox" id="mSplit" checked> Two one-ways</label>
         <label class="toggle"><input type="checkbox" id="mPack" checked> Flight + hotel</label>
         <label class="toggle"><input type="checkbox" id="mTrend" checked> Price trend</label>
       </div>
@@ -178,6 +190,7 @@ table.bt td:last-child{text-align:right;font-family:var(--f-mono)}
     <button class="tab" role="tab" id="t-flights" aria-selected="true" data-tab="flights">Flights<span class="n" id="n-flights">0</span></button>
     <button class="tab" role="tab" id="t-stays" aria-selected="false" data-tab="stays">Stays<span class="n" id="n-stays">0</span></button>
     <button class="tab" role="tab" id="t-pack" aria-selected="false" data-tab="pack">Flight + hotel<span class="n" id="n-pack">0</span></button>
+    <button class="tab" role="tab" id="t-explore" aria-selected="false" data-tab="explore">Cheap destinations<span class="n" id="n-explore">0</span></button>
     <button class="tab" role="tab" id="t-rail" aria-selected="false" data-tab="rail">Trains &amp; coaches</button>
     <button class="tab" role="tab" id="t-budget" aria-selected="false" data-tab="budget">Trip budget</button>
   </div>
@@ -196,12 +209,14 @@ table.bt td:last-child{text-align:right;font-family:var(--f-mono)}
         <div class="fgroup"><span class="label">Leave between (hour)</span><div class="row2"><input type="number" id="ff-dep0" min="0" max="23" value="0" aria-label="Earliest departure hour"><input type="number" id="ff-dep1" min="0" max="23" value="23" aria-label="Latest departure hour"></div></div>
         <div class="fgroup"><label class="chip"><input type="checkbox" id="ff-late"> Hide arrivals 23:00–05:59</label>
           <label class="chip"><input type="checkbox" id="ff-self"> Hide self-transfer tickets</label>
-          <label class="chip"><input type="checkbox" id="ff-multi"> Seen on 2+ sites</label></div>
+          <label class="chip"><input type="checkbox" id="ff-multi"> Seen on 2+ sites</label>
+          <label class="chip"><input type="checkbox" id="ff-deal"> Bargains only</label></div>
+        <div class="fgroup"><span class="label">Departure date</span><select id="ff-date"><option value="">Any date</option></select></div>
         <div class="fgroup"><span class="label">Max journey (hours, each way)</span><input type="number" id="ff-dur" min="1" max="48" placeholder="No limit"></div>
         <div class="fgroup"><span class="label">Departure airports</span><div class="chips" id="ff-air"></div></div>
         <div class="fgroup"><span class="label">Airlines</span><div class="chips" id="ff-al"></div></div>
       </details>
-      <div><div class="reshead"><span class="muted small" id="fl-count"></span></div><div class="list" id="fl-list"></div></div>
+      <div><div class="datestrip" id="fl-dates"></div><div class="reshead"><span class="muted small" id="fl-count"></span></div><div class="list" id="fl-list"></div></div>
     </div>
   </section>
 
@@ -219,7 +234,8 @@ table.bt td:last-child{text-align:right;font-family:var(--f-mono)}
         <div class="fgroup"><span class="label">Max distance from centre (km)</span><input type="number" id="hf-dist" min="0" step="0.5" placeholder="No limit"></div>
         <div class="fgroup"><span class="label">Min stars</span><select id="hf-stars"><option value="0">Any</option><option value="2">2+</option><option value="3">3+</option><option value="4">4+</option><option value="5">5</option></select></div>
         <div class="fgroup"><label class="chip"><input type="checkbox" id="hf-cancel"> Free cancellation only</label>
-          <label class="chip"><input type="checkbox" id="hf-multi"> Compared on 2+ sites</label></div>
+          <label class="chip"><input type="checkbox" id="hf-multi"> Compared on 2+ sites</label>
+          <label class="chip"><input type="checkbox" id="hf-deal"> Bargains &amp; discounts only</label></div>
         <div class="fgroup"><span class="label">Name contains</span><input type="text" id="hf-q" placeholder="e.g. Baixa"></div>
       </details>
       <div><div class="reshead"><span class="muted small" id="st-count"></span></div><div class="list" id="st-list"></div></div>
@@ -236,6 +252,22 @@ table.bt td:last-child{text-align:right;font-family:var(--f-mono)}
         <div class="fgroup"><span class="label">Max total</span><input type="number" id="pf-max" min="0" placeholder="No limit"></div>
       </details>
       <div><div class="reshead"><span class="muted small" id="pk-count"></span></div><div class="list" id="pk-list"></div></div>
+    </div>
+  </section>
+
+  <!-- EXPLORE -->
+  <section class="panel" id="p-explore" role="tabpanel" hidden>
+    <div class="cols">
+      <details class="filters" open>
+        <summary>Where's cheap?</summary>
+        <div class="fgroup"><span class="small muted">Uses your From airport and dates above. Prices are return flights for one unless you leave the return date empty.</span></div>
+        <div class="fgroup"><span class="label">Region</span><input type="text" id="exRegion" value="Europe" list="exRegions">
+          <datalist id="exRegions"><option>Europe</option><option>anywhere</option><option>Spain</option><option>Italy</option><option>Portugal</option><option>France</option><option>Greece</option><option>Germany</option><option>Scandinavia</option><option>the Balkans</option><option>Central Europe</option><option>North Africa</option><option>Southeast Asia</option></datalist></div>
+        <div class="fgroup"><span class="label">Max flight price</span><input type="number" id="exMax" min="0" placeholder="No limit"></div>
+        <div class="fgroup"><span class="label">Max flying time (hours)</span><input type="number" id="exHours" min="0" step="0.5" placeholder="No limit"></div>
+        <div class="fgroup"><button class="btn" type="button" id="exGo">Find cheap destinations</button></div>
+      </details>
+      <div><div class="reshead"><span class="muted small" id="ex-count"></span></div><div class="list" id="ex-list"></div></div>
     </div>
   </section>
 
@@ -291,10 +323,12 @@ const SV = {
   lfg: "LetsFG Book the best flights or hotels", bk: "Booking.com", ta: "Tripadvisor", tv: "Trivago"
 };
 const SRC = { // label per result source
-  kiwi:"Kiwi.com", exp:"Expedia", lm:"lastminute.com", lfg:"LetsFG", bk:"Booking.com", ta:"Tripadvisor", tv:"trivago"
+  kiwi:"Kiwi.com", kiwi1w:"Kiwi.com · 2 one-ways", exp:"Expedia", lm:"lastminute.com", lfg:"LetsFG", bk:"Booking.com", ta:"Tripadvisor", tv:"trivago"
 };
 const JOBS = [
   {id:"f-kiwi", src:"kiwi", kind:"flights", label:"Kiwi.com · flights"},
+  {id:"f-split", src:"kiwi", kind:"split", label:"Kiwi.com · two one-ways"},
+  {id:"f-lfgflex", src:"lfg", kind:"flex", label:"LetsFG · cheapest dates"},
   {id:"f-exp", src:"exp", kind:"flights", label:"Expedia · flights"},
   {id:"f-lm", src:"lm", kind:"flights", label:"lastminute.com · flights"},
   {id:"f-lfg", src:"lfg", kind:"flights", label:"LetsFG · flights"},
@@ -305,7 +339,9 @@ const JOBS = [
   {id:"h-lm", src:"lm", kind:"stays", label:"lastminute.com · stays"},
   {id:"h-lfg", src:"lfg", kind:"stays", label:"LetsFG · stays"},
   {id:"p-lm", src:"lm", kind:"pack", label:"lastminute.com · flight + hotel"},
-  {id:"t-tv", src:"tv", kind:"trend", label:"trivago · price trend"}
+  {id:"t-tv", src:"tv", kind:"trend", label:"trivago · price trend"},
+  {id:"e-kiwi", src:"kiwi", kind:"explore", label:"Kiwi.com · cheap destinations"},
+  {id:"e-lfg", src:"lfg", kind:"explore", label:"LetsFG · cheap destinations"}
 ];
 
 /* ---------- reference data ---------- */
@@ -353,6 +389,7 @@ const hhmm = t => { // accepts "6:55 AM", "2026-12-04T06:55:00", "06:55"
 const hour = t => t ? +t.slice(0,2) : NaN;
 const durMin = s => { if (s==null) return NaN; if (typeof s==="number") return s; const str=String(s);
   const h=str.match(/(\d+)\s*h/i), m=str.match(/(\d+)\s*m/i); if (h||m) return (h?+h[1]*60:0)+(m?+m[1]:0); return NaN; };
+const fmtDay = iso => { if (!iso) return ""; const d = new Date(iso+"T12:00:00"); return isNaN(d) ? iso : d.toLocaleDateString("en-GB",{weekday:"short", day:"numeric", month:"short"}); };
 const fmtDur = m => isFinite(m) ? `${Math.floor(m/60)}h ${String(m%60).padStart(2,"0")}m` : "";
 const ddmmyyyy = iso => iso.split("-").reverse().join("/");
 const mdY = iso => { const [y,m,d]=iso.split("-"); return `${m}/${d}/${y}`; };
@@ -365,7 +402,7 @@ const store = { get(k,d){ try{ const v=localStorage.getItem(k); return v?JSON.pa
                 set(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch{} } };
 
 /* ---------- state ---------- */
-const S = { q:null, flights:[], stays:[], pack:[], trend:null, status:{}, center:null,
+const S = { q:null, flights:[], stays:[], pack:[], trend:null, status:{}, center:null, explore:[], dateFilter:"",
   budget:{flight:null, stay:null}, pins: store.get("sts-pins", []), mcp:null, run:0 };
 
 /* ---------- MCP plumbing ---------- */
@@ -411,7 +448,7 @@ function textOf(res){
 function setStatus(id, s, msg){ S.status[id] = {s, msg}; renderBoard(); }
 function renderBoard(){
   const q = S.q;
-  $("#board").innerHTML = JOBS.map(j=>{
+  $("#board").innerHTML = JOBS.filter(j=>j.kind!=="explore" || S.status[j.id]).map(j=>{
     const st = S.status[j.id] || {s: q?"skip":"idle", msg: q?"Not searched":"Ready"};
     return `<div class="src" data-s="${st.s}"><span class="dot" aria-hidden="true"></span><div style="min-width:0"><b>${esc(j.label)}</b><span>${esc(st.msg)}</span></div></div>`;
   }).join("");
@@ -433,7 +470,7 @@ async function resolvePlace(text){
 /* ---------- flight parsers ---------- */
 function mkFlight(src, o){
   // o: {price, cur, approx, link, airline, out:{from,to,dep,arr,date,dur,stops,nums}, ret, self, refundable, bags:{cabin,checked,included}}
-  const key = `${o.out.from}${o.out.dep}|${o.ret? o.ret.from+o.ret.dep : "-"}`;
+  const key = `${o.out.from}${o.out.date||""}${o.out.dep}|${o.ret? o.ret.from+(o.ret.date||"")+o.ret.dep : "-"}`;
   return {key, airline:o.airline, out:o.out, ret:o.ret, self:!!o.self, refundable:o.refundable,
     offers:[{src, price:o.price, approx:!!o.approx, link:o.link, bags:o.bags||null, note:o.note||""}]};
 }
@@ -447,7 +484,7 @@ function parseKiwi(p, cur){
       bags:{included:true, note:`Price includes your bags (${it.baggage?.cabinBag||0} cabin, ${it.baggage?.checkedBag||0} checked)`}});
   });
 }
-function parseLmFlights(p, cur){
+function parseLmFlights(p, cur, q){
   return (p?.flights||[]).map(f=>{
     const seg = s => { const m=String(s||"").match(/([A-Z]{3})\s+(\d{1,2}:\d{2})\s*→\s*([A-Z]{3})\s+(\d{1,2}:\d{2})/); return m?{from:m[1],dep:hhmm(m[2]),to:m[3],arr:hhmm(m[4])}:null; };
     const o = seg(f.outbound), r = seg(f.return); if (!o) return null;
@@ -455,7 +492,7 @@ function parseLmFlights(p, cur){
     const pc = (f.price_amount!=null? f.price_amount/100 : num(f.price));
     const pcur = p.currency || cur;
     return mkFlight("lm",{price:fx(pc,pcur,cur), approx:pcur!==cur, link:f.deeplink, airline:f.airline,
-      out:{...o, dur:durMin(f.duration_out), stops:st}, ret:r?{...r, dur:durMin(f.duration_ret), stops:st}:null,
+      out:{...o, date:q.depart, dur:durMin(f.duration_out), stops:st}, ret:r?{...r, date:q.ret, dur:durMin(f.duration_ret), stops:st}:null,
       bags:{note:"Bag prices not given by lastminute.com"}});
   }).filter(Boolean);
 }
@@ -518,7 +555,7 @@ function typeOf(raw, name){
 function mkStay(src, o){
   return {key:hkey(o.name, S.q.d.city), name:o.name, type:typeOf(o.type||"", o.name), stars:o.stars||0,
     ratings:isFinite(o.rating)?[{src, v:o.rating, n:o.reviews}]:[], lat:o.lat, lon:o.lon, distKm:o.distKm, address:o.address||"",
-    offers:[{src, total:o.total, approx:!!o.approx, link:o.link, cancel:o.cancel, note:o.note||"", extra:o.extra||null}]};
+    offers:[{src, total:o.total, approx:!!o.approx, link:o.link, cancel:o.cancel, note:o.note||"", extra:o.extra||null, was:o.was}]};
 }
 function parseBooking(p, cur){
   return (p?.accommodations||[]).filter(a=>a.price?.book).map(a=>mkStay("bk",{name:a.name, type:a.accommodationType, stars:a.rating?.stars,
@@ -528,7 +565,8 @@ function parseBooking(p, cur){
 function parseExpHotels(p, cur){
   return (p?.data||[]).filter(h=>h.total_price).map(h=>mkStay("exp",{name:h.hotel_name, stars:num(h.star_rating), rating:num(h.guest_rating), reviews:h.guest_review_count,
     lat:num(h.geo_location?.latitude), lon:num(h.geo_location?.longitude), total:fx(num(h.total_price), h.currency||"USD", cur), approx:(h.currency||"USD")!==cur,
-    link:h.url, note: h.total_strikeout_price?"Discounted":""}));
+    link:h.url, was: h.total_strikeout_price? fx(num(h.total_strikeout_price), h.currency||"USD", cur) : NaN,
+    note: h.total_strikeout_price?"Expedia discount":""}));
 }
 function parseTa(p, cur){
   return (p?.hotels||[]).map(h=>{
@@ -572,8 +610,9 @@ function mergeFlights(list){
   const m = new Map();
   for (const f of list){
     const ex = m.get(f.key);
-    if (!ex){ m.set(f.key, f); continue; }
-    ex.offers.push(...f.offers);
+    if (!ex){ m.set(f.key, {...f, offers:[...f.offers]}); continue; }
+    for (const o of f.offers){ const i = ex.offers.findIndex(x=>x.src===o.src);
+      if (i<0) ex.offers.push(o); else if (o.price < ex.offers[i].price) ex.offers[i] = o; }
     if (!ex.out.nums && f.out.nums) ex.out.nums = f.out.nums;
     if (ex.ret && f.ret && !ex.ret.nums && f.ret.nums) ex.ret.nums = f.ret.nums;
     ex.self = ex.self || f.self; if (ex.refundable==null) ex.refundable=f.refundable;
@@ -585,8 +624,10 @@ function mergeStays(list){
   const m = new Map();
   for (const h of list){
     const ex = m.get(h.key);
-    if (!ex){ m.set(h.key, h); continue; }
-    ex.offers.push(...h.offers); ex.ratings.push(...h.ratings);
+    if (!ex){ m.set(h.key, {...h, offers:[...h.offers], ratings:[...h.ratings]}); continue; }
+    for (const o of h.offers){ const i = ex.offers.findIndex(x=>x.src===o.src);
+      if (i<0) ex.offers.push(o); else if (o.total < ex.offers[i].total) ex.offers[i] = {...o, was: isFinite(o.was)?o.was:ex.offers[i].was}; }
+    for (const r of h.ratings) if (!ex.ratings.some(x=>x.src===r.src)) ex.ratings.push(r);
     if (!ex.stars && h.stars) ex.stars = h.stars;
     if (!isFinite(ex.lat) && isFinite(h.lat)){ ex.lat=h.lat; ex.lon=h.lon; }
     if (!isFinite(ex.distKm) && isFinite(h.distKm)) ex.distKm = h.distKm;
@@ -630,13 +671,15 @@ async function runSearch(ev){
   ev?.preventDefault();
   const q = {
     fromText:$("#from").value.trim(), toText:$("#to").value.trim(), depart:$("#depart").value, ret:$("#ret").value,
-    adults:+$("#adults").value, cur:$("#currency").value, bags:$("#bags").value,
+    adults:+$("#adults").value, cur:$("#currency").value, bags:$("#bags").value, flex:+$("#flex").value, deep:$("#depth").value==="deep",
     modes:{flights:$("#mFlights").checked, stays:$("#mStays").checked, pack:$("#mPack").checked, trend:$("#mTrend").checked}
   };
+  q.modes.split = q.modes.flights && $("#mSplit").checked && !!q.ret;
+  q.modes.flex = q.modes.flights && q.flex>0 && !!q.ret;
   const today = new Date().toISOString().slice(0,10);
   if (!q.depart || q.depart < today) return showBanner("Pick a departure date from today onwards.");
   if (q.ret && q.ret <= q.depart) return showBanner("The return date has to be after the departure date.");
-  store.set("sts-form", {from:q.fromText,to:q.toText,depart:q.depart,ret:q.ret,adults:q.adults,cur:q.cur,bags:q.bags});
+  store.set("sts-form", {from:q.fromText,to:q.toText,depart:q.depart,ret:q.ret,adults:q.adults,cur:q.cur,bags:q.bags,flex:q.flex,depth:$("#depth").value});
   S.mcp = await mcpReady;
   if (!S.mcp) return showBanner("Live search needs this page open in claude.ai while you are signed in. In this view the connectors cannot be reached.");
   hideBanner();
@@ -646,7 +689,7 @@ async function runSearch(ev){
   q.checkout = q.ret || addDays(q.depart, 3);
   q.nights = nightsBetween(q.depart, q.checkout);
   $("#bDays").value = q.nights + 1;
-  S.q = q; S.flights=[]; S.stays=[]; S.pack=[]; S.trend=null; S.status={}; S.center=null; S.budget={flight:null,stay:null};
+  S.q = q; S.flights=[]; S.stays=[]; S.pack=[]; S.trend=null; S.status={}; S.center=null; S.budget={flight:null,stay:null}; S.dateFilter="";
   for (const j of JOBS) if (q.modes[j.kind]) setStatus(j.id,"run","Searching…");
   renderBoard(); renderAll();
   const [o, d] = await Promise.all([resolvePlace(q.fromText), resolvePlace(q.toText)]);
@@ -660,68 +703,138 @@ async function runSearch(ev){
   const addH = (arr) => { if (!live()) return arr.length; S.stays = mergeStays([...S.stays.flatMap(h=>h.offers.map((o,i)=>({...h, offers:[o], ratings:h.ratings.filter(r=>r.src===o.src)}))), ...arr]); return arr.length; };
   const needCode = (p) => { if (!p.code) throw new Error(`Could not find an airport code for “${p.city}”. Type its 3-letter code instead.`); };
 
+  // Runs several variants of one search; succeeds if any pass succeeds.
+  const passes = async (fns) => { const rs = await Promise.allSettled(fns.map(f=>f()));
+    const ok = rs.filter(r=>r.status==="fulfilled"); if (!ok.length) throw rs[0].reason;
+    return {items: ok.flatMap(r=>r.value||[]), passes: ok.length, failed: rs.length-ok.length}; };
+  const passNote = r => `${r.passes} pass${r.passes>1?"es":""}${r.failed?`, ${r.failed} failed`:""}`;
+  const kiwiIn = (from, to, dep, ret, sort, extra={}) => { const inp = {flyFrom:from, flyTo:to, departureDate:ddmmyyyy(dep), currency:q.cur, adults:q.adults, sort, ...extra};
+    if (ret) inp.returnDate = ddmmyyyy(ret);
+    if (q.flex){ inp.departureDateFlexDays = q.flex; if (ret) inp.returnDateFlexDays = q.flex; }
+    if (q.bags!=="none") inp.adults_hand_bags = Array(q.adults).fill(q.bags==="cabin"?1:0);
+    if (q.bags==="checked") inp.adults_hold_bags = Array(q.adults).fill(1);
+    return inp; };
+  const lfgPoll = async (sid, statusId) => {
+    for (let i=0;i<10;i++){
+      if (!live()) return null;
+      const t = textOf(await call("lfg","get_flight_results",{search_id:sid, max_results:40, wait_for_all:true},{timeout:90000}));
+      if (/Found \d+ offers/.test(t)) return t;
+      const m = t.match(/(\d+) offers so far/);
+      setStatus(statusId,"run", m?`Checking hundreds of sites… ${m[1]} offers so far`:"Checking hundreds of sites…");
+    }
+    throw new Error("LetsFG was still searching after several minutes.");
+  };
   if (q.modes.flights){
-    job("f-kiwi", async()=>{ const inp = {flyFrom:o.code||o.city, flyTo:d.code||d.city, departureDate:ddmmyyyy(q.depart), currency:q.cur, adults:q.adults, sort:"price"};
-      if (q.ret) inp.returnDate = ddmmyyyy(q.ret);
-      if (q.bags!=="none") inp.adults_hand_bags = Array(q.adults).fill(q.bags==="cabin"?1:0);
-      if (q.bags==="checked") inp.adults_hold_bags = Array(q.adults).fill(1);
-      const n = addF(parseKiwi(payloadOf(await call("kiwi","search-flight",inp)), q.cur)); return `${n} itineraries`; });
+    job("f-kiwi", async()=>{
+      const sorts = q.deep ? ["price","quality","duration","date"] : ["price"];
+      const r = await passes(sorts.map(s=>async()=>parseKiwi(payloadOf(await call("kiwi","search-flight",kiwiIn(o.code||o.city, d.code||d.city, q.depart, q.ret, s))), q.cur)));
+      addF(r.items); return `${r.items.length} itineraries · ${passNote(r)}${q.flex?` · ±${q.flex} days`:""}`; });
     job("f-exp", async()=>{ needCode(o); needCode(d);
-      const inp = {origin:o.code, destination:d.code, departure_date:q.depart, adult_count:q.adults, limit:25, sort_type:"PRICE",
+      const base = {origin:o.code, destination:d.code, departure_date:q.depart, adult_count:q.adults, limit:25, sort_type:"PRICE", filter_nearby_airport:false,
         query_text:`${q.adults===1?"solo ":""}flights ${o.city} to ${d.city}`, user_locale:"en-GB", client_device_info:{device_type:"desktop", agent_name:"ClaudeAI"}};
-      if (q.ret) inp.return_date = q.ret;
-      const n = addF(parseExpFlights(payloadOf(await call("exp","search_flights",inp)), q.cur, q)); return `${n} itineraries (USD, converted)`; });
+      if (q.ret) base.return_date = q.ret;
+      const variants = q.deep ? [{offset:0},{offset:25},{offset:0, sort_type:"DURATION"}] : [{offset:0}];
+      const r = await passes(variants.map(v=>async()=>parseExpFlights(payloadOf(await call("exp","search_flights",{...base, ...v})), q.cur, q)));
+      addF(r.items); return `${r.items.length} itineraries (USD, converted) · ${passNote(r)}`; });
     job("f-lm", async()=>{ needCode(o); needCode(d);
-      const inp = {departure:o.code, arrival:d.code, start_date:q.depart, adults:q.adults, max_results:25, language:"en"};
-      if (q.ret) inp.end_date = q.ret;
-      const n = addF(parseLmFlights(payloadOf(await call("lm","search_flights",inp)), q.cur)); return `${n} itineraries`; });
+      const base = {departure:o.code, arrival:d.code, start_date:q.depart, adults:q.adults, max_results:30, language:"en"};
+      if (q.ret) base.end_date = q.ret;
+      const variants = q.deep ? [{}, {ranking_best:true}, {max_stops:"0"}] : [{}];
+      const r = await passes(variants.map(v=>async()=>parseLmFlights(payloadOf(await call("lm","search_flights",{...base, ...v})), q.cur, q)));
+      addF(r.items); return `${r.items.length} itineraries · ${passNote(r)}`; });
     job("f-lfg", async()=>{ needCode(o); needCode(d);
-      const inp = {origin:o.code, destination:d.code, date_from:q.depart, adults:q.adults, currency:q.cur, max_results:25, language:"en"};
+      const inp = {origin:o.code, destination:d.code, date_from:q.depart, adults:q.adults, currency:q.cur, max_results:40, language:"en"};
       if (q.ret) inp.return_from = q.ret;
+      else if (q.flex) { inp.date_from = addDays(q.depart, -q.flex) < new Date().toISOString().slice(0,10) ? q.depart : addDays(q.depart, -q.flex); inp.date_to = addDays(q.depart, q.flex); }
       const s = payloadOf(await call("lfg","search_flights",inp)); const sid = s?.search_id; if (!sid) throw new Error("LetsFG did not start a search.");
-      for (let i=0;i<9;i++){
-        if (!live()) return "Stopped";
-        const t = textOf(await call("lfg","get_flight_results",{search_id:sid, max_results:25, wait_for_all:true},{timeout:90000}));
-        const found = /Found \d+ offers/.test(t);
-        const m = t.match(/(\d+) offers so far, cheapest so far ([\d.]+)/);
-        if (!found){ setStatus("f-lfg","run", m?`Checking hundreds of sites… ${m[1]} offers so far`:"Checking hundreds of sites…"); continue; }
-        const n = addF(parseLfgFlights(t, q.cur)); return `${n} picks from ${(t.match(/Found (\d+) offers/)||[])[1]} offers`;
+      const t = await lfgPoll(sid, "f-lfg"); if (!t) return "Stopped";
+      const n = addF(parseLfgFlights(t, q.cur)); return `${n} picks from ${(t.match(/Found (\d+) offers/)||[])[1]} offers, split tickets included`;
+    });
+  }
+  if (q.modes.flex){
+    job("f-lfgflex", async()=>{ needCode(o); needCode(d);
+      const today = new Date().toISOString().slice(0,10); let early = addDays(q.depart, -q.flex); if (early < today) early = today;
+      const s = payloadOf(await call("lfg","search_flights_flexible_dates",{origin:o.code, destination:d.code, earliest_departure:early, latest_return:addDays(q.ret, q.flex),
+        min_nights:Math.max(1,q.nights-1), max_nights:q.nights+1, adults:q.adults, currency:q.cur, language:"en"}));
+      const sid = s?.search_id; if (!sid) throw new Error("LetsFG did not start a flexible-date search.");
+      const pairs = (s.comparing||[]).map(p=>`${p.departure.slice(5)}→${p.return.slice(5)}`).join(", ");
+      setStatus("f-lfgflex","run",`Pricing the best date pairs: ${pairs}`);
+      const t = await lfgPoll(sid, "f-lfgflex"); if (!t) return "Stopped";
+      const n = addF(parseLfgFlights(t, q.cur)); return `${n} offers on the cheapest dates (${pairs||"window ±"+q.flex+" days"})`;
+    });
+  }
+  if (q.modes.split){
+    job("f-split", async()=>{
+      const sorts = q.deep ? ["price","quality"] : ["price"];
+      const one = (from,to,dep) => passes(sorts.map(s=>async()=>parseKiwi(payloadOf(await call("kiwi","search-flight",kiwiIn(from,to,dep,null,s))), q.cur)));
+      const [ob, ib] = await Promise.all([one(o.code||o.city, d.code||d.city, q.depart), one(d.code||d.city, o.code||o.city, q.ret)]);
+      const uniq = a => [...new Map(a.map(f=>[f.key,f])).values()].sort((x,y)=>x.offers[0].price-y.offers[0].price).slice(0,10);
+      const outs = uniq(ob.items), backs = uniq(ib.items); const combos = [];
+      for (const a of outs) for (const b of backs){
+        if ((b.out.date||"") < (a.out.date||"")) continue;
+        combos.push({key:`${a.out.from}${a.out.date}${a.out.dep}|${b.out.from}${b.out.date}${b.out.dep}`,
+          airline: a.airline===b.airline ? a.airline : `${a.airline} / ${b.airline}`, out:a.out, ret:b.out, self:false, split:true,
+          offers:[{src:"kiwi1w", price:a.offers[0].price+b.offers[0].price, links:[["Out",a.offers[0].link],["Back",b.offers[0].link]],
+            bags:{included:true, note:"Two separate one-way tickets; price includes your bags"}}]});
       }
-      throw new Error("LetsFG was still searching after 3 minutes.");
+      combos.sort((x,y)=>x.offers[0].price-y.offers[0].price);
+      const top = combos.slice(0,25); addF(top); return `${top.length} one-way pairings from ${outs.length}×${backs.length} fares`;
     });
   }
   if (q.modes.stays){
     const stayIn = {checkin:q.depart, checkout:q.checkout};
-    job("h-bk", async()=>{ const p = payloadOf(await call("bk","accommodations_search",{destination:d.city, checkin_date:q.depart, checkout_date:q.checkout,
-        number_of_adults:q.adults, number_of_rooms:1, currency:q.cur, user_country_code:"gb", user_locale:"en-gb", user_query:`${q.adults===1?"Solo traveller ":""}stay in ${d.city}`}));
-      const arr = parseBooking(p, q.cur);
+    job("h-bk", async()=>{
+      const base = {destination:d.city, checkin_date:q.depart, checkout_date:q.checkout, number_of_adults:q.adults, number_of_rooms:1, currency:q.cur,
+        user_country_code:"gb", user_locale:"en-gb", user_query:`${q.adults===1?"Solo traveller ":""}stay in ${d.city}`};
+      const variants = q.deep ? [{}, {accommodation_types:["HOSTEL"], user_query:`Cheap hostel in ${d.city}`},
+        {accommodation_types:["GUEST_HOUSE","BED_AND_BREAKFAST"], user_query:`Budget guest house or B&B in ${d.city}`},
+        {accommodation_types:["APARTMENT","HOLIDAY_HOME"], user_query:`Apartment in ${d.city}`},
+        {accommodation_types:["HOTEL"], minimum_review_score:8, user_query:`Well-rated hotel in ${d.city}`},
+        {cancellation_type:"free_cancellation", user_query:`Free cancellation stay in ${d.city}`}] : [{}];
+      const r = await passes(variants.map(v=>async()=>parseBooking(payloadOf(await call("bk","accommodations_search",{...base, ...v})), q.cur)));
+      const arr = r.items;
       if (!S.center){ const la = median(arr.map(h=>h.lat)), lo = median(arr.map(h=>h.lon)); if (isFinite(la)) S.center = {lat:la, lon:lo}; }
-      return `${addH(arr)} stays`; });
-    job("h-exp", async()=>{ const p = payloadOf(await call("exp","search_hotels",{destination:d.city, check_in_date:q.depart, check_out_date:q.checkout,
-        adult_count:q.adults, limit:30, sort_type:"CHEAPEST", query_text:`${q.adults===1?"solo ":""}stay in ${d.city}`, user_locale:"en-GB",
-        client_device_info:{device_type:"desktop", agent_name:"ClaudeAI"}}));
-      return `${addH(parseExpHotels(p, q.cur))} stays (USD, converted)`; });
-    job("h-ta", async()=>{ const p = payloadOf(await call("ta","search_hotels",{location:d.city, checkIn:q.depart, checkOut:q.checkout, guests:q.adults, rooms:1,
-        limit:20, sortBy:"PRICE_LOW_TO_HIGH", pricingMode:"QUICK", mcpServerVersion:{version:"V2026_0327"}, requestContext:{clientType:"DESKTOP"}},{timeout:150000}));
-      if (!S.center && isFinite(p?.searchParameters?.searchGeoData?.lat)) S.center = {lat:p.searchParameters.searchGeoData.lat, lon:p.searchParameters.searchGeoData.lon};
-      return `${addH(parseTa(p, q.cur))} stays (USD, converted)`; });
+      addH(arr); return `${arr.length} stays · ${passNote(r)}`; });
+    job("h-exp", async()=>{
+      const base = {destination:d.city, check_in_date:q.depart, check_out_date:q.checkout, adult_count:q.adults, limit:30, sort_type:"CHEAPEST",
+        query_text:`${q.adults===1?"solo ":""}stay in ${d.city}`, user_locale:"en-GB", client_device_info:{device_type:"desktop", agent_name:"ClaudeAI"}};
+      const variants = q.deep ? [{offset:0},{offset:30},{offset:60},{offset:0, discounted_only:true, sort_type:null},{offset:0, property_types:["VR"]},{offset:0, guest_rating:"VERY_GOOD"}] : [{offset:0}];
+      const r = await passes(variants.map(v=>async()=>parseExpHotels(payloadOf(await call("exp","search_hotels",{...base, ...v})), q.cur)));
+      addH(r.items); return `${r.items.length} stays (USD, converted) · ${passNote(r)}`; });
+    job("h-ta", async()=>{
+      const base = {location:d.city, checkIn:q.depart, checkOut:q.checkout, guests:q.adults, rooms:1, limit:30, pricingMode:"QUICK",
+        mcpServerVersion:{version:"V2026_0327"}, requestContext:{clientType:"DESKTOP"}};
+      const variants = q.deep ? [{sortBy:"PRICE_LOW_TO_HIGH"},{sortBy:"BEST_VALUE"},{sortBy:"PRICE_LOW_TO_HIGH", filters:{hotelStyles:["BUDGET"]}}] : [{sortBy:"PRICE_LOW_TO_HIGH"}];
+      const r = await passes(variants.map(v=>async()=>{ const p = payloadOf(await call("ta","search_hotels",{...base, ...v},{timeout:150000}));
+        if (!S.center && isFinite(p?.searchParameters?.searchGeoData?.lat)) S.center = {lat:p.searchParameters.searchGeoData.lat, lon:p.searchParameters.searchGeoData.lon};
+        return parseTa(p, q.cur); }));
+      addH(r.items); return `${r.items.length} stays (USD, converted) · ${passNote(r)}`; });
     job("h-tv", async()=>{
       let c = S.center; for (let i=0; !c && i<40; i++){ await new Promise(r=>setTimeout(r,1500)); c = S.center; }
-      if (!c) throw new Error("Needs the destination's map position; none of the other stay searches returned one.");
-      const p = payloadOf(await call("tv","trivago-accommodation-radius-search",{latitude:c.lat, longitude:c.lon, arrival:q.depart, departure:q.checkout,
-        adults:q.adults, rooms:1, currency:q.cur, country:q.cur==="USD"?"US":(q.cur==="EUR"?"IE":"GB"), language:"EN_GB"}));
-      return `${addH(parseTv(p, q.cur))} stays`; });
+      const mk = {arrival:q.depart, departure:q.checkout, adults:q.adults, rooms:1, currency:q.cur, country:q.cur==="USD"?"US":(q.cur==="EUR"?"IE":"GB"), language:"EN_GB"};
+      const fns = [];
+      if (c){ fns.push(async()=>parseTv(payloadOf(await call("tv","trivago-accommodation-radius-search",{latitude:c.lat, longitude:c.lon, ...mk})), q.cur));
+        if (q.deep){
+          fns.push(async()=>parseTv(payloadOf(await call("tv","trivago-accommodation-radius-search",{latitude:c.lat, longitude:c.lon, ...mk, review_rating:{rating80:true}})), q.cur));
+          fns.push(async()=>parseTv(payloadOf(await call("tv","trivago-accommodation-radius-search",{latitude:c.lat, longitude:c.lon, ...mk, filters:{freeCancellation:true}})), q.cur));
+          const med = median(S.stays.map(h=>stayDerived(h).perNight));
+          if (isFinite(med) && med>20) fns.push(async()=>parseTv(payloadOf(await call("tv","trivago-accommodation-radius-search",{latitude:c.lat, longitude:c.lon, ...mk, price_range:{maxPrice:Math.round(med), budgetType:"PRICE_PER_NIGHT"}})), q.cur));
+        } }
+      if (q.deep || !c) fns.push(async()=>parseTv(payloadOf(await call("tv","trivago-accommodation-search",{query:d.city, ...mk})), q.cur));
+      const r = await passes(fns); addH(r.items); return `${r.items.length} stays · ${passNote(r)}`; });
     job("h-lm", async()=>{
-      const r = payloadOf(await call("lm","resolve_destination_id",{lang:"en", city_name:d.city}));
-      const id = r?.success ? r.id : (r?.suggestions?.[0]?.id || d.code); if (!id) throw new Error(`lastminute.com does not recognise “${d.city}”.`);
-      const p = payloadOf(await call("lm","search_only_hotel",{destination:String(id), date_from:q.depart, date_to:q.checkout, adults:String(q.adults), max_results:20, sort:"price", lang:"en"}));
-      return `${addH(parseLmHotels(p, q.cur, "hotel"))} stays`; });
+      const rr = payloadOf(await call("lm","resolve_destination_id",{lang:"en", city_name:d.city}));
+      const id = rr?.success ? rr.id : (rr?.suggestions?.[0]?.id || d.code); if (!id) throw new Error(`lastminute.com does not recognise “${d.city}”.`);
+      const base = {destination:String(id), date_from:q.depart, date_to:q.checkout, adults:String(q.adults), max_results:20, lang:"en"};
+      const variants = q.deep ? [{sort:"price"},{sort:"review_score"},{sort:"distance"},{sort:"price", accommodation_type:"4,7,8"}] : [{sort:"price"}];
+      const r = await passes(variants.map(v=>async()=>parseLmHotels(payloadOf(await call("lm","search_only_hotel",{...base, ...v})), q.cur, "hotel")));
+      addH(r.items); return `${r.items.length} stays · ${passNote(r)}`; });
     job("h-lfg", async()=>{
-      const s = payloadOf(await call("lfg","search_hotels",{location:d.city, ...stayIn, adults:q.adults, currency:q.cur, max_results:30, language:"en"}));
+      const s = payloadOf(await call("lfg","search_hotels",{location:d.city, ...stayIn, adults:q.adults, currency:q.cur, max_results:q.deep?60:30, language:"en"}));
       const sid = s?.search_id; if (!sid) throw new Error("LetsFG did not start a hotel search.");
       for (let i=0;i<10;i++){
         if (!live()) return "Stopped";
-        const p = payloadOf(await call("lfg","get_hotel_results",{search_id:sid, max_results:30},{timeout:90000}));
+        const p = payloadOf(await call("lfg","get_hotel_results",{search_id:sid, max_results:q.deep?60:30},{timeout:90000}));
         if (p?.hotels) return `${addH(parseLfgHotels(p, q.cur))} stays of ${p.hotels_found||"?"} found`;
         setStatus("h-lfg","run",`Still collecting rates… ${p?.waited_seconds?p.waited_seconds+"s":""}`);
       }
@@ -730,8 +843,11 @@ async function runSearch(ev){
   }
   if (q.modes.pack){
     job("p-lm", async()=>{ needCode(o); needCode(d);
-      const p = payloadOf(await call("lm","search_flight_and_hotel_package",{origin:o.code, destination:d.code, date_from:q.depart, date_to:q.checkout, adults:String(q.adults), max_results:20, sort:"price", lang:"en"}));
-      const arr = parseLmHotels(p, q.cur, "package"); if (live()) S.pack = arr; return `${arr.length} packages`; });
+      const base = {origin:o.code, destination:d.code, date_from:q.depart, date_to:q.checkout, adults:String(q.adults), max_results:20, lang:"en"};
+      const variants = q.deep ? [{sort:"price"},{sort:"review_score"},{sort:"recommended"}] : [{sort:"price"}];
+      const r = await passes(variants.map(v=>async()=>parseLmHotels(payloadOf(await call("lm","search_flight_and_hotel_package",{...base, ...v})), q.cur, "package")));
+      const arr = [...new Map(r.items.sort((a,b)=>b.offers[0].total-a.offers[0].total).map(x=>[x.key,x])).values()];
+      if (live()) S.pack = arr; return `${arr.length} packages · ${passNote(r)}`; });
   }
   if (q.modes.trend){
     job("t-tv", async()=>{ const m0 = q.depart.slice(0,7); const e = new Date(q.depart+"T12:00:00"); e.setMonth(e.getMonth()+3);
@@ -742,6 +858,70 @@ async function runSearch(ev){
   renderRail();
   await Promise.allSettled(tasks);
   if (live()){ $("#goBtn").disabled = false; $("#goBtn").textContent = "Search all sources"; renderAll(); }
+}
+
+/* ---------- cheap destinations (open "To") ---------- */
+async function runExplore(){
+  const region = $("#exRegion").value.trim() || "Europe";
+  const from = $("#from").value.trim(), depart = $("#depart").value, ret = $("#ret").value, cur = $("#currency").value, adults = +$("#adults").value;
+  const today = new Date().toISOString().slice(0,10);
+  if (!from || !depart || depart < today) return showBanner("Fill in From and a departure date from today onwards, then search for cheap destinations.");
+  S.mcp = await mcpReady;
+  if (!S.mcp) return showBanner("Live search needs this page open in claude.ai while you are signed in.");
+  hideBanner(); const btn = $("#exGo"); btn.disabled = true; btn.textContent = "Searching…";
+  S.explore = []; renderExplore();
+  const o = await resolvePlace(from);
+  const add = (city, country, code, price, src, link, hours) => {
+    if (!isFinite(price)) return; const k = norm(city);
+    let e = S.explore.find(x=>x.k===k);
+    if (!e){ e = {k, city, country, code, hours, offers:[]}; S.explore.push(e); }
+    if (!e.code && code) e.code = code; if (!isFinite(e.hours) && isFinite(hours)) e.hours = hours;
+    const i = e.offers.findIndex(x=>x.src===src); const off = {src, price, link};
+    if (i<0) e.offers.push(off); else if (price < e.offers[i].price) e.offers[i] = off;
+  };
+  const kiwiJob = (async()=>{ setStatus("e-kiwi","run","Searching…");
+    try {
+      const inp = {flyFrom:o.code||from, flyTo:region, departureDate:ddmmyyyy(depart), currency:cur, adults, one_for_city:true, sort:"price"};
+      if (ret) inp.returnDate = ddmmyyyy(ret);
+      const flex = +$("#flex").value; if (flex){ inp.departureDateFlexDays = flex; if (ret) inp.returnDateFlexDays = flex; }
+      const sorts = $("#depth").value==="deep" ? ["price","popularity"] : ["price"];
+      let n = 0;
+      for (const s of sorts){ const p = payloadOf(await call("kiwi","search-flight",{...inp, sort:s}));
+        for (const it of p?.itineraries||[]){ const segs = it.outbound?.segments||[]; const last = segs[segs.length-1]||{};
+          add(last.toCity||it.outbound?.to, last.toCountry||"", it.outbound?.to, it.price, "kiwi", it.bookingUrl, (it.outbound?.durationSeconds||0)/3600); n++; } }
+      setStatus("e-kiwi","ok",`${n} fares`);
+    } catch(e){ setStatus("e-kiwi","err", e?.code? errText(e, SV.kiwi) : String(e?.message||e)); }
+    renderExplore(); })();
+  const lfgJob = (async()=>{ setStatus("e-lfg","run","Searching…");
+    try {
+      if (!o.code) throw new Error(`Could not find an airport code for “${from}”.`);
+      const inp = {origin:o.code, place:region, date_from:depart, currency:cur, adults};
+      if (ret) inp.return_from = ret;
+      const p = payloadOf(await call("lfg","explore_destinations",inp));
+      for (const d of p?.destinations||[]) add(d.city, d.country, d.iata, num(d.total), "lfg", null, d.flight_hours);
+      setStatus("e-lfg","ok",`${(p?.destinations||[]).length} destinations`);
+    } catch(e){ setStatus("e-lfg","err", e?.code? errText(e, SV.lfg) : String(e?.message||e)); }
+    renderExplore(); })();
+  await Promise.allSettled([kiwiJob, lfgJob]);
+  btn.disabled = false; btn.textContent = "Find cheap destinations"; renderExplore();
+}
+function renderExplore(){
+  const el = $("#ex-list"); const cur = $("#currency").value;
+  const mx = num($("#exMax").value), mh = num($("#exHours").value);
+  let rows = S.explore.map(e=>({e, best: e.offers.slice().sort((a,b)=>a.price-b.price)[0]}));
+  if (isFinite(mx)) rows = rows.filter(r=>r.best.price<=mx);
+  if (isFinite(mh)) rows = rows.filter(r=>!isFinite(r.e.hours) || r.e.hours<=mh);
+  rows.sort((a,b)=>a.best.price-b.best.price);
+  $("#n-explore").textContent = S.explore.length;
+  $("#ex-count").textContent = S.explore.length ? `${rows.length} destinations, cheapest first · flight prices for ${$("#adults").value==="1"?"one":"your group"}` : "";
+  if (!S.explore.length){ el.innerHTML = `<div class="empty"><b>Not sure where to go?</b> Pick a region (or “anywhere”) and this asks Kiwi.com and LetsFG for the cheapest places to fly from <b>${esc($("#from").value)}</b> on your dates. Turn on flexible dates above to widen it. Then tap “Search this trip” to run the full flight and stay search for that city.</div>`; return; }
+  if (!rows.length){ el.innerHTML = `<div class="empty">No destinations within these limits.</div>`; return; }
+  el.innerHTML = rows.map(({e,best},i)=>`<article class="card">
+    <div style="min-width:0"><div class="hname">${esc(e.city)}${e.code?` <span class="code small">${esc(e.code)}</span>`:""}</div>
+      <div class="meta">${e.country?`<span class="pill">${esc(e.country)}</span>`:""}${isFinite(e.hours)&&e.hours>0?`<span class="pill">~${e.hours.toFixed(1)} h flying</span>`:""}${i===0?`<span class="pill tag">Cheapest</span>`:""}${e.offers.length>1?`<span class="pill good">Seen on ${e.offers.length} sites</span>`:""}</div></div>
+    <div class="price"><div class="big">${money(best.price,cur)}</div><div class="small muted">return flight${$("#ret").value?"":" (one way)"}</div>
+      <div class="offers">${e.offers.map(o=>`<div class="offer${o===best?" best":""}"><span>${esc(SRC[o.src])}</span><span class="mono">${money(o.price,cur)}</span>${o.link?`<a href="${esc(o.link)}" target="_blank" rel="noopener">Open ↗</a>`:""}</div>`).join("")}</div>
+      <div class="acts"><button class="btn small" data-explore="${esc(e.code||e.city)}">Search this trip</button></div></div></article>`).join("");
 }
 
 /* ---------- lastminute room options (no direct link in search results) ---------- */
@@ -808,21 +988,31 @@ function legHtml(L){
 }
 function renderFlights(){
   const el = $("#fl-list"); const cur = S.q?.cur || "GBP";
-  sourceChips($("#ff-src"), ["kiwi","exp","lm","lfg"], "f");
+  sourceChips($("#ff-src"), ["kiwi","kiwi1w","exp","lm","lfg"], "f");
   dynChips($("#ff-air"), [...new Set(S.flights.map(f=>f.out.from))].sort(), "fa");
   dynChips($("#ff-al"), [...new Set(S.flights.flatMap(f=>String(f.airline||"").split(" / ")).filter(Boolean))].sort(), "fl");
   if (!S.q){ el.innerHTML = emptyState("flights"); $("#fl-count").textContent=""; return; }
   const srcs = checked($("#ff-src")), airs = checked($("#ff-air")), als = checked($("#ff-al"));
-  const rows = S.flights.map(f=>{
+  const allRows = S.flights.map(f=>{
     const offers = f.offers.filter(o=>srcs.has(o.src));
     const best = flightBest({...f, offers}); return {f, offers, best};
   }).filter(r=>r.best);
+  // Cheapest price per departure date (flexible-date and one-way searches spread results across days)
+  const byDate = {}; for (const r of allRows){ const k = r.f.out.date; if (k && (!byDate[k] || r.best.t < byDate[k])) byDate[k] = r.best.t; }
+  const dates = Object.keys(byDate).sort(); const dsel = $("#ff-date"); const dv = dsel.value;
+  dsel.innerHTML = `<option value="">Any date</option>` + dates.map(k=>`<option value="${k}">${fmtDay(k)} · from ${money(byDate[k],cur)}</option>`).join("");
+  dsel.value = dates.includes(dv) ? dv : "";
+  const lowD = Math.min(...Object.values(byDate));
+  $("#fl-dates").innerHTML = dates.length>1 ? dates.map(k=>`<button class="dchip${byDate[k]===lowD?" low":""}" data-day="${k}" aria-pressed="${dsel.value===k}">${esc(fmtDay(k))}<b>${money(byDate[k],cur)}</b></button>`).join("") : "";
+  const rows = dsel.value ? allRows.filter(r=>r.f.out.date===dsel.value) : allRows;
+  const typical = median(allRows.map(r=>r.best.t));
   const totals = rows.map(r=>r.best.t), durs = rows.map(r=>(r.f.out.dur||0)+(r.f.ret?.dur||0));
   const maxAll = Math.max(...totals, 0);
   const pct = +$("#ff-max").value; const cap = maxAll*pct/100;
   $("#ff-maxv").textContent = rows.length ? money(cap, cur) : "";
   const stopsMax = +$("#ff-stops").value, d0 = +$("#ff-dep0").value, d1 = +$("#ff-dep1").value;
-  const late = $("#ff-late").checked, noSelf = $("#ff-self").checked, multi = $("#ff-multi").checked, dmax = num($("#ff-dur").value);
+  const late = $("#ff-late").checked, noSelf = $("#ff-self").checked, multi = $("#ff-multi").checked, dmax = num($("#ff-dur").value), dealOnly = $("#ff-deal").checked;
+  const dealPct = t => (allRows.length>=5 && isFinite(typical) && t <= typical*0.8) ? Math.round((1-t/typical)*100) : 0;
   const lateArr = L => { const h = hour(L?.arr); return isFinite(h) && (h>=23 || h<6); };
   let out = rows.filter(({f,best,offers})=>{
     if (best.t > cap + 0.01) return false;
@@ -831,6 +1021,7 @@ function renderFlights(){
     if (late && (lateArr(f.out) || lateArr(f.ret))) return false;
     if (noSelf && f.self) return false;
     if (multi && new Set(offers.map(o=>o.src)).size<2) return false;
+    if (dealOnly && !dealPct(best.t)) return false;
     if (isFinite(dmax) && (f.out.dur>dmax*60 || (f.ret && f.ret.dur>dmax*60))) return false;
     if (airs.size && !airs.has(f.out.from)) return false;
     if (als.size && !String(f.airline||"").split(" / ").some(a=>als.has(a))) return false;
@@ -846,8 +1037,11 @@ function renderFlights(){
   if (!out.length){ el.innerHTML = `<div class="empty">${rows.length?"No flights match these filters. Loosen the price or time limits.":"No flight results yet."}</div>`; return; }
   el.innerHTML = out.slice(0,150).map(({f,offers,best,score})=>{
     const picked = S.budget.flight?.key===f.key;
+    const dp = dealPct(best.t);
     const pills = [
       best.t===cheapest?`<span class="pill tag">Cheapest</span>`:"",
+      dp?`<span class="pill good">Bargain · ${dp}% under typical</span>`:"",
+      offers.some(o=>o.src==="kiwi1w")?`<span class="pill">Two one-way tickets</span>`:"",
       f.self?`<span class="pill warn">Self-transfer · missed connections not protected</span>`:"",
       (lateArr(f.out)||lateArr(f.ret))?`<span class="pill warn">Late-night arrival</span>`:"",
       f.refundable===true?`<span class="pill good">Refundable</span>`:(f.refundable===false?`<span class="pill">Non-refundable</span>`:""),
@@ -856,13 +1050,13 @@ function renderFlights(){
     const bagNote = best.o.bags?.note ? `<div class="small muted">${esc(best.o.bags.note)}</div>` : "";
     const sorted = offers.slice().sort((a,b)=>(a.price+bagCost(a).v)-(b.price+bagCost(b).v));
     return `<article class="card${picked?" picked":""}">
-      <div style="min-width:0"><div class="small muted">${esc(f.airline||"")}${f.out.nums?` · <span class="mono">${esc(f.out.nums)}</span>`:""}${f.out.date?` · ${esc(f.out.date)}`:""}</div>
+      <div style="min-width:0"><div class="small muted">${esc(f.airline||"")}${f.out.nums?` · <span class="mono">${esc(f.out.nums)}</span>`:""}${f.out.date?` · ${esc(fmtDay(f.out.date))}`:""}${f.ret?.date?` → ${esc(fmtDay(f.ret.date))}`:""}</div>
         <div class="legs">${legHtml(f.out)}${legHtml(f.ret)}</div>
         <div class="meta">${pills}</div>${bagNote}</div>
       <div class="price"><span class="score" title="Solo score: price, journey time, arrival hour, ticket safety">Solo ${score}</span>
         <div class="big">${money(best.t, S.q.cur, best.o.approx)}</div>
         <div class="small muted">${S.q.adults>1?`total for ${S.q.adults} · `:""}incl. ${S.q.bags==="none"?"no bags":S.q.bags==="cabin"?"cabin bag":"checked bag"}${best.bc.known?"":" (bag price unknown)"}</div>
-        <div class="offers">${sorted.map(o=>{ const bc=bagCost(o); return `<div class="offer${o===best.o?" best":""}"><span>${esc(SRC[o.src])}</span><span class="mono">${money(o.price+bc.v,S.q.cur,o.approx)}${bc.known?"":"+bags"}</span>${o.link?`<a href="${esc(o.link)}" target="_blank" rel="noopener">Open ↗</a>`:""}</div>`; }).join("")}</div>
+        <div class="offers">${sorted.map(o=>{ const bc=bagCost(o); return `<div class="offer${o===best.o?" best":""}"><span>${esc(SRC[o.src])}</span><span class="mono">${money(o.price+bc.v,S.q.cur,o.approx)}${bc.known?"":"+bags"}</span>${o.links?o.links.map(([n,u])=>`<a href="${esc(u)}" target="_blank" rel="noopener">${esc(n)} ↗</a>`).join(" "):(o.link?`<a href="${esc(o.link)}" target="_blank" rel="noopener">Open ↗</a>`:"")}</div>`; }).join("")}</div>
         <div class="acts"><button class="btn ghost small" data-pickf="${esc(f.key)}">${picked?"In budget ✓":"Use in budget"}</button><button class="btn ghost small" data-pin="f|${esc(f.key)}" aria-label="Save to shortlist">☆ Save</button></div>
       </div></article>`;
   }).join("");
@@ -879,8 +1073,18 @@ function renderStays(){
   const cap = maxAll * (+$("#hf-max").value)/100;
   $("#hf-maxv").textContent = rows.length ? money(cap, cur) : "";
   const minR = +$("#hf-rating").value, dmax = num($("#hf-dist").value), minS = +$("#hf-stars").value;
-  const onlyCancel = $("#hf-cancel").checked, multi = $("#hf-multi").checked, qtext = norm($("#hf-q").value);
-  let out = rows.filter(({h,d})=>{
+  const onlyCancel = $("#hf-cancel").checked, multi = $("#hf-multi").checked, qtext = norm($("#hf-q").value), dealOnly = $("#hf-deal").checked;
+  // "Typical" = trivago's forecast 3★ average for the month (for 3★+ hotels), otherwise the median for the same property type in these results.
+  const trendAvg = (()=>{ const m = S.trend?.find(x=>x.month===S.q.depart.slice(0,7)); return num(m?.star_rating_prices?.[0]?.average_price); })();
+  const typeMed = {}; for (const t of new Set(rows.map(r=>r.h.type))) typeMed[t] = median(rows.filter(r=>r.h.type===t).map(r=>r.d.perNight));
+  for (const r of rows){
+    const typ = (r.h.type==="Hotel" && r.h.stars>=3 && isFinite(trendAvg)) ? trendAvg : typeMed[r.h.type];
+    const cnt = rows.filter(x=>x.h.type===r.h.type).length;
+    r.deal = (isFinite(typ) && (cnt>=5 || typ===trendAvg) && r.d.perNight <= typ*0.8 && !(r.d.rating<7)) ? Math.round((1-r.d.perNight/typ)*100) : 0;
+    r.disc = r.d.offers.find(o=>isFinite(o.was) && o.was>o.total);
+  }
+  let out = rows.filter(({h,d,deal,disc})=>{
+    if (dealOnly && !deal && !disc) return false;
     if (d.perNight > cap + 0.01) return false;
     if (minR && !(d.rating>=minR)) return false;
     if (isFinite(dmax) && isFinite(d.dist) && d.dist>dmax) return false;
@@ -898,7 +1102,7 @@ function renderStays(){
   const cheapest = Math.min(...out.map(r=>r.d.perNight));
   $("#st-count").textContent = `${out.length} of ${rows.length} places · ${S.stays.reduce((s,h)=>s+h.offers.length,0)} prices merged · ${S.q.nights} night${S.q.nights>1?"s":""} for ${S.q.adults===1?"one":S.q.adults}`;
   if (!out.length){ el.innerHTML = `<div class="empty">${rows.length?"No stays match these filters.":"No stay results yet."}</div>`; return; }
-  el.innerHTML = out.slice(0,200).map(({h,d,score})=>{
+  el.innerHTML = out.slice(0,250).map(({h,d,score,deal,disc})=>{
     const picked = S.budget.stay?.key===h.key;
     const nsrc = new Set(h.offers.map(o=>o.src)).size;
     const save = d.offers.length>1 ? d.offers[d.offers.length-1].total - d.best.total : 0;
@@ -909,6 +1113,8 @@ function renderStays(){
       isFinite(d.dist)?`<span class="pill">${d.dist.toFixed(1)} km from centre</span>`:"",
       d.cancel?`<span class="pill good">Free cancellation option</span>`:"",
       d.perNight===cheapest?`<span class="pill tag">Cheapest</span>`:"",
+      deal?`<span class="pill good">Bargain · ${deal}% under typical</span>`:"",
+      disc?`<span class="pill good">${esc(SRC[disc.src])} discount · was ${money(disc.was/S.q.nights,S.q.cur,disc.approx)}/night</span>`:"",
       nsrc>1?`<span class="pill good">Compared on ${nsrc} sites${save>1?` · save ${money(save,S.q.cur)}`:""}</span>`:""
     ].join("");
     return `<article class="card${picked?" picked":""}">
@@ -916,7 +1122,7 @@ function renderStays(){
       <div class="price"><span class="score" title="Solo score: nightly price, guest rating, distance from centre, cancellation">Solo ${score}</span>
         <div class="big">${money(d.perNight, S.q.cur, d.best.approx)}<span class="small muted"> /night</span></div>
         <div class="small muted">${money(d.best.total, S.q.cur, d.best.approx)} total · ${S.q.adults===1?"single traveller":S.q.adults+" guests"}</div>
-        <div class="offers">${d.offers.map(o=>`<div class="offer${o===d.best?" best":""}"><span title="${esc(o.note)}">${esc(SRC[o.src])}${o.cancel?" ✓":""}</span><span class="mono">${money(o.total/S.q.nights,S.q.cur,o.approx)}</span>${o.link?`<a href="${esc(o.link)}" target="_blank" rel="noopener">Open ↗</a>`:(o.src==="lm"?`<button class="btn ghost small" data-lmrooms="${esc(h.key)}|stays">Rooms</button>`:"")}</div>`).join("")}</div>
+        <div class="offers">${d.offers.map(o=>`<div class="offer${o===d.best?" best":""}"><span title="${esc(o.note)}">${esc(SRC[o.src])}${o.cancel?" ✓":""}</span><span class="mono">${isFinite(o.was)&&o.was>o.total?`<s class="was">${money(o.was/S.q.nights,S.q.cur,o.approx)}</s> `:""}${money(o.total/S.q.nights,S.q.cur,o.approx)}</span>${o.link?`<a href="${esc(o.link)}" target="_blank" rel="noopener">Open ↗</a>`:(o.src==="lm"?`<button class="btn ghost small" data-lmrooms="${esc(h.key)}|stays">Rooms</button>`:"")}</div>`).join("")}</div>
         ${d.offers.some(o=>o.note)?`<div class="small muted" style="text-align:right">${esc(d.offers.map(o=>o.note).filter(Boolean)[0])}</div>`:""}
         <div class="acts"><button class="btn ghost small" data-picks="${esc(h.key)}">${picked?"In budget ✓":"Use in budget"}</button><button class="btn ghost small" data-pin="s|${esc(h.key)}">☆ Save</button></div>
       </div><div class="rooms" hidden></div></article>`;
@@ -1000,8 +1206,8 @@ function renderPins(){
 }
 
 function emptyState(kind){
-  const list = {flights:["Kiwi.com","Expedia","lastminute.com","LetsFG (hundreds of airlines and travel sites, split tickets)"],
-    stays:["Booking.com","Expedia","Tripadvisor","trivago (compares many booking sites)","lastminute.com","LetsFG"],
+  const list = {flights:["Kiwi.com, sorted 4 ways and across your flexible dates","Expedia, several pages","lastminute.com, cheapest, best-value and direct-only","LetsFG: hundreds of airlines and travel sites, split tickets, plus its cheapest-date finder","Two one-way tickets paired up, often cheaper than a return"],
+    stays:["Booking.com, including separate hostel, guest house, apartment and free-cancellation passes","Expedia, several pages plus discounted-only and holiday rentals","Tripadvisor, cheapest, best value and budget","trivago (compares many booking sites), several filtered passes","lastminute.com, sorted 4 ways","LetsFG"],
     pack:["lastminute.com flight + hotel packages, compared with booking the same pieces separately"]}[kind];
   return `<div class="empty"><b>Enter a route and dates, then search.</b> Each search asks all of these at once and merges the same ${kind==="stays"?"property":"flight"} into one row so you see every price side by side:<ul>${list.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
     <p class="small">Prices are for ${$("#adults").value==="1"?"one traveller":"your group"}. Bag fees are added to flight prices where the site publishes them. The first search asks you to allow each connector.</p></div>`;
@@ -1013,7 +1219,7 @@ function hideBanner(){ $("#banner").hidden = true; }
 document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click",()=>selectTab(t.dataset.tab)));
 function selectTab(name){
   document.querySelectorAll(".tab").forEach(t=>t.setAttribute("aria-selected", String(t.dataset.tab===name)));
-  ["flights","stays","pack","rail","budget"].forEach(n=>$("#p-"+n).hidden = n!==name);
+  ["flights","stays","pack","explore","rail","budget"].forEach(n=>$("#p-"+n).hidden = n!==name);
   try{ sessionStorage.setItem("sts-tab", name); }catch{}
 }
 $("#searchForm").addEventListener("submit", runSearch);
@@ -1022,11 +1228,15 @@ document.addEventListener("input", e=>{
   if (id.startsWith("ff-") || /^f/.test(f)) renderFlights();
   else if (id.startsWith("hf-") || /^h/.test(f)) renderStays();
   else if (id.startsWith("pf-")) renderPack();
+  else if (id==="exMax" || id==="exHours") renderExplore();
   else if (id.startsWith("b") && id!=="bags") renderBudget();
   if (id==="from"||id==="to") renderRail();
 });
 document.addEventListener("click", e=>{
   const b = e.target.closest("button"); if (!b) return;
+  if (b.id==="exGo") runExplore();
+  if (b.dataset.explore){ $("#to").value = b.dataset.explore; selectTab("flights"); $("#searchForm").requestSubmit(); window.scrollTo({top:0, behavior:"smooth"}); }
+  if (b.dataset.day){ const s = $("#ff-date"); s.value = s.value===b.dataset.day ? "" : b.dataset.day; renderFlights(); }
   if (b.dataset.pickf){ const f = S.flights.find(x=>x.key===b.dataset.pickf); S.budget.flight = S.budget.flight?.key===f?.key ? null : f; renderFlights(); renderBudget(); }
   if (b.dataset.picks){ const h = S.stays.find(x=>x.key===b.dataset.picks); S.budget.stay = S.budget.stay?.key===h?.key ? null : h; renderStays(); renderBudget(); }
   if (b.dataset.lmrooms){ const [k,w] = b.dataset.lmrooms.split("|"); lmRooms(k, b, w); }
@@ -1047,9 +1257,10 @@ document.addEventListener("click", e=>{
     $("#from").value = saved.from||$("#from").value; $("#to").value = saved.to||$("#to").value;
     if (saved.depart && saved.depart >= new Date().toISOString().slice(0,10)){ $("#depart").value = saved.depart; $("#ret").value = saved.ret||""; }
     $("#adults").value = String(saved.adults||1); $("#currency").value = saved.cur||"GBP"; $("#bags").value = saved.bags||"cabin";
+    if (saved.flex!=null) $("#flex").value = String(saved.flex); if (saved.depth) $("#depth").value = saved.depth;
   }
   try{ const t = sessionStorage.getItem("sts-tab"); if (t) selectTab(t); }catch{}
-  renderBoard(); renderRail(); renderAll();
+  renderBoard(); renderRail(); renderAll(); renderExplore();
   mcpReady.then(m=>{ if (!m) showBanner("Live search runs when this page is open in claude.ai while you are signed in and have allowed its connectors. In this view the connectors cannot be reached."); });
 })();
 })();
