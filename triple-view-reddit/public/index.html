@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Your private multi-pane viewer for Reddit videos, GIFs and images.">
+<meta property="og:title" content="Triple View Reddit">
+<meta property="og:description" content="Your private multi-pane viewer for Reddit videos, GIFs and images.">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#0f0b10">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="TV Reddit">
+<title>Triple View Reddit</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="styles.css?v=reddit-1">
+</head>
+<body>
+<div id="offline" class="offline" role="status" hidden>You are offline. The app is available, but nothing can play until the connection returns.</div>
+
+<!-- Boot -->
+<section id="view-boot" class="view center" aria-live="polite">
+  <div class="mark" aria-hidden="true"><i></i><i></i><i></i></div>
+  <p class="dim mono">Starting</p>
+</section>
+
+<!-- Unsupported -->
+<section id="view-unsupported" class="view center" hidden>
+  <div class="card">
+    <div class="mark mark-off" aria-hidden="true"><i></i><i></i><i></i></div>
+    <h1>This browser cannot play video</h1>
+    <p>Use current Chrome, Edge or Firefox on a computer, or Safari on iPhone and iPad.</p>
+  </div>
+</section>
+
+<!-- Feeds and Reddit access -->
+<section id="view-setup" class="view center" hidden>
+  <form id="setup-form" class="card login" autocomplete="off">
+    <div class="mark" aria-hidden="true"><i></i><i></i><i></i></div>
+    <h1>Triple View Reddit</h1>
+    <p class="dim">Videos, GIFs and images from your subreddits, side by side.</p>
+    <label for="setup-feeds" class="lbl">Your feeds, one per line</label>
+    <textarea id="setup-feeds" name="feeds" rows="6" spellcheck="false" autocapitalize="off" autocorrect="off" placeholder="r/EarthPorn+CityPorn&#10;Cats = cats, aww, catgifs&#10;https://www.reddit.com/user/name/m/myfeed"></textarea>
+    <p class="dim small">Each line becomes one feed in the picker. Use a subreddit name, several joined with + or commas, or the address of a custom feed (multireddit). Put a name and = in front to label it.</p>
+    <details id="setup-more" class="setup-more">
+      <summary>Reddit access <span class="dim">(optional)</span></summary>
+      <div class="setup-body">
+        <p id="setup-access" class="notice"></p>
+        <label for="setup-client" class="lbl">Reddit app ID</label>
+        <input id="setup-client" name="client" type="text" inputmode="text" autocapitalize="off" spellcheck="false" maxlength="40" placeholder="Leave empty to use Reddit without signing in">
+        <p class="dim small">Needed for private custom feeds, and useful if Reddit refuses or limits this browser. Create one at reddit.com/prefs/apps: choose <b>installed app</b> and set its redirect address to:</p>
+        <p class="redirect"><code id="setup-redirect"></code> <button id="setup-copy" class="chip" type="button">Copy</button></p>
+        <div class="stash-actions">
+          <button id="setup-signin" class="chip" type="button">Sign in with Reddit</button>
+          <button id="setup-import" class="chip" type="button" hidden>Add my custom feeds</button>
+          <button id="setup-signout" class="chip" type="button" hidden>Sign out of Reddit</button>
+        </div>
+        <p class="dim small">The app ID alone opens public feeds. Sign in with Reddit as well to open your private custom feeds. The sign-in is kept only in this browser and goes only to Reddit.</p>
+      </div>
+    </details>
+    <p id="setup-error" class="form-error" role="alert" hidden></p>
+    <button id="setup-save" class="btn btn-primary" type="submit">Save and open</button>
+    <button id="setup-cancel" class="btn btn-ghost" type="button" hidden>Back without changes</button>
+  </form>
+</section>
+
+<!-- App -->
+<main id="view-app" class="app" hidden>
+  <header class="bar">
+    <button id="btn-status" class="status" type="button" aria-haspopup="dialog" aria-label="Reddit connection status">
+      <span class="dot" data-state="checking"></span><span id="status-text">Checking</span>
+    </button>
+    <div class="bar-actions">
+      <button class="chip" id="btn-playall" type="button" aria-label="Play all panes">Play all</button>
+      <button class="chip" id="btn-pauseall" type="button" aria-label="Pause all panes">Pause all</button>
+      <button class="chip" id="btn-feeds" type="button" aria-label="Change feeds and Reddit access">Feeds</button>
+      <button class="chip icon" id="btn-fullscreen" type="button" aria-label="Fill screen with all panes" title="Fill screen" aria-pressed="false">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+      </button>
+      <button class="chip icon" id="btn-help" type="button" aria-label="Help and install instructions">?</button>
+    </div>
+  </header>
+  <div class="audio-tools" role="group" aria-label="Layout and audio">
+    <label class="audio-interval" id="count-tool" hidden>Panes <select id="pane-count" aria-label="Number of panes"><option>1</option><option>2</option><option selected>3</option></select></label>
+    <button class="chip" id="btn-layout-toggle" type="button" aria-expanded="false" aria-controls="layout-group" hidden>Layout: Smart</button>
+    <span id="layout-group" class="layout-group">
+    <label class="audio-interval" id="layout-tool" hidden>Layout <select id="pane-layout" aria-label="Pane layout"><option value="smart">Smart fit</option><option value="grid">Grid</option><option value="focus1">Focus 1</option><option value="focus2">Focus 2</option><option value="collage">Collage</option></select></label>
+    <button class="chip" id="btn-new-collage" type="button" hidden title="Make a new random collage">New collage</button>
+    <button class="chip" id="btn-cover" type="button" aria-pressed="true" title="Fill each pane edge to edge, trimming the picture where needed. Turn off to always show the whole picture.">Fill panes</button>
+    <span class="audio-interval" id="layout-cycle-tool" hidden><button class="chip" id="btn-layout-cycle" type="button" aria-pressed="false" title="Change layout and rotate which posts are main">Cycle layout</button> <select id="layout-cycle-mode" aria-label="What Cycle layout changes"><option value="all">Layouts &amp; mains</option><option value="mains">Mains only</option><option value="collage">Collages</option></select> every <input id="layout-cycle-seconds" type="number" min="5" max="3600" step="1" value="30" inputmode="numeric" aria-label="Layout cycling interval in seconds"> s <button class="chip" id="btn-layout-hold" type="button" aria-pressed="false" hidden>Hold</button></span>
+    </span>
+    <button class="chip" id="btn-shuffle-all" type="button" title="Load a shuffled post into every pane from your last chosen feed and filters">Shuffle all</button>
+    <button class="chip" id="btn-clear-all" type="button" title="Stop and unload every pane">Stop all</button>
+    <label class="audio-interval" title="How long an image stays up, and the shortest time a short clip keeps repeating, before the pane moves on">Hold <input id="hold-seconds" type="number" min="2" max="600" step="1" value="12" inputmode="numeric" aria-label="Seconds to show images and short clips"> s</label>
+    <button class="chip" id="btn-audio-cycle" type="button" aria-pressed="false">Cycle audio</button>
+    <label class="audio-interval">Every <input id="audio-cycle-seconds" type="number" min="1" max="3600" step="1" value="20" inputmode="numeric" aria-label="Audio cycling interval in seconds"> s</label>
+    <button id="btn-mix-audio" class="chip" type="button" aria-pressed="false">Mix audio</button>
+    <button id="btn-audio-all" class="chip" type="button" hidden>All audio</button>
+    <button id="btn-audio-none" class="chip" type="button" hidden>Mute all</button>
+    <span id="audio-hint" class="dim">One audible pane</span>
+  </div>
+  <div id="panes" class="panes"></div>
+  <button id="btn-hold-float" class="chip hold-float" type="button" hidden></button>
+  <button id="btn-exit-fullscreen" class="chip exit-fullscreen" type="button" aria-label="Exit full-screen fill mode" title="Exit full screen" hidden>
+    <svg aria-hidden="true" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h5V4M20 9h-5V4M4 15h5v5M20 15h-5v5"/></svg>
+  </button>
+  <div id="resume-banner" class="resume" hidden>
+    <span>Playback paused while you were away.</span>
+    <button id="btn-resume" class="btn btn-primary" type="button">Resume</button>
+  </div>
+</main>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<!-- Post picker -->
+<div id="sheet-backdrop" class="backdrop" hidden></div>
+<div id="sheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" hidden>
+  <div class="grabber" aria-hidden="true"></div>
+  <div class="sheet-head">
+    <h2 id="sheet-title">Choose for pane <span id="sheet-slot">1</span></h2>
+    <button class="chip icon" type="button" data-close aria-label="Close picker">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div class="filters">
+    <input id="lib-search" type="search" placeholder="Search post titles" aria-label="Search post titles" enterkeyhint="search">
+    <div class="library-tools">
+      <label for="lib-sort">Sort
+        <select id="lib-sort">
+          <option value="hot">Hot</option>
+          <option value="new">New</option>
+          <option value="rising">Rising</option>
+          <option value="top-day">Top today</option>
+          <option value="top-week">Top this week</option>
+          <option value="top-month">Top this month</option>
+          <option value="top-year">Top this year</option>
+          <option value="top-all">Top of all time</option>
+          <option value="random">Shuffled</option>
+        </select>
+      </label>
+      <button id="lib-favourites" class="chip" type="button" aria-pressed="false">Favourites</button>
+      <button id="lib-unplayed" class="chip" type="button" aria-pressed="false" title="Only posts that have not played on this device">Unseen</button>
+      <button id="lib-shuffle" class="chip" type="button" hidden>Shuffle again</button>
+      <button id="lib-fill-all" class="chip fill-all" type="button">Shuffle into all panes</button>
+    </div>
+    <p id="lib-favourites-note" class="dim library-note" hidden>Favourites are saved on this device.</p>
+    <div class="seg" id="seg-type" role="group" aria-label="Filter by type">
+      <button type="button" data-type="" aria-pressed="true">All</button>
+      <button type="button" data-type="video" aria-pressed="false">Videos</button>
+      <button type="button" data-type="gif" aria-pressed="false">GIFs</button>
+      <button type="button" data-type="image" aria-pressed="false">Images</button>
+    </div>
+    <div class="seg scroll" id="seg-lib" role="group" aria-label="Filter by feed"></div>
+  </div>
+  <div id="lib-body" class="lib-body" aria-live="polite"></div>
+  <div class="pager">
+    <button id="pg-prev" class="chip" type="button">Previous</button>
+    <span id="pg-info" class="mono dim"></span>
+    <button id="pg-next" class="chip" type="button">Next</button>
+  </div>
+</div>
+
+<!-- Post info -->
+<div id="info" class="sheet info" role="dialog" aria-modal="true" aria-labelledby="info-title" hidden>
+  <div class="grabber" aria-hidden="true"></div>
+  <div class="sheet-head">
+    <h2 id="info-title">Post info</h2>
+    <button class="chip icon" type="button" data-close aria-label="Close post info">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div id="info-body" class="help-body" aria-live="polite"></div>
+</div>
+
+<div id="help" class="sheet help" role="dialog" aria-modal="true" aria-labelledby="help-title" hidden>
+  <div class="grabber" aria-hidden="true"></div>
+  <div class="sheet-head">
+    <h2 id="help-title">How the room works</h2>
+    <button class="chip icon" type="button" data-close aria-label="Close help">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div class="help-body">
+    <div id="help-status" class="notice"></div>
+    <p>Everything comes directly from Reddit to this device: posts, thumbnails, videos, GIFs and images. Redgifs clips come directly from Redgifs. There is no middle server; your feeds, favourites and seen posts are kept only in this browser.</p>
+    <p class="dim mono" id="help-session"></p>
+    <button id="btn-edit-feeds" class="chip" type="button">Change feeds or Reddit access</button>
+    <h3>Gestures</h3>
+    <dl>
+      <dt>Tap a pane</dt><dd>Moves the audio to it without showing player controls. With Mix audio off, every other pane is muted. With Mix audio on, its audio is added without muting the others. GIFs and images are silent.</dd>
+      <dt>Tap the audio pane</dt><dd>Shows or hides its controls. They hide on their own after 3 seconds.</dd>
+      <dt>Feeds</dt><dd>The Feeds button opens your list of subreddits and custom feeds. Each line is one feed in the picker; All feeds mixes them. Your panes are kept and restored paused when you come back.</dd>
+      <dt>Shuffle all panes</dt><dd>In the picker, choose a feed, a type (videos, GIFs or images), a search, Favourites or Unseen, then tap Shuffle into all panes. Every pane gets a different random post from that selection and keeps shuffling within it. The Shuffle button in the toolbar shows the last selection you used, and tapping it reshuffles every pane from it.</dd>
+      <dt>Continuous shuffle</dt><dd>Each pane remembers the feed and filters it was chosen with. When a video ends, or an image or short clip has had its Hold time, that pane moves on to another random post from the same selection. Shuffle mixes hot, new and top posts and keeps reaching further back while you watch. Changing the picker later does not affect existing panes.</dd>
+      <dt>Hold</dt><dd>How many seconds an image stays up. Clips shorter than this repeat until the time has passed, so a two-second GIF does not flash by. Longer videos always play to the end.</dd>
+      <dt>Layout</dt><dd>Smart fit shapes the frames around what is playing: tall posts get tall frames and wide posts wide ones, always filling the screen. Each pane also prefers the next post that suits its frame, so the picture changes without the frames jumping about. Grid shows equal panes. Focus 1 makes pane 1 large with the others around it. Focus 2 makes panes 1 and 2 large. Collage makes a random mosaic. On a phone, tap the Layout button to show these controls.</dd>
+      <dt>Fill panes</dt><dd>On: every pane is filled edge to edge with no bars, trimming the picture slightly where its shape differs from the frame. Off: the whole picture is always shown, with bars where needed.</dd>
+      <dt>Make main</dt><dd>In Focus and Collage layouts, open a small pane's controls and use Make main (the overlapping squares) to move its post into a large position; its sound comes with it. Double tap still expands any pane to fill the screen.</dd>
+      <dt>Cycle layout</dt><dd>Turn on Cycle layout to change the layout every 30 seconds, or your own interval from 5 to 3600 seconds. It steps through Focus 1, Focus 2, Collage and Grid and moves different posts into the main spots each time. Set it to Mains only to keep your layout and just change which posts are large, or to Collages for a fresh collage on every step. Press Hold, or H on a computer, to keep the current layout.</dd>
+      <dt>Favourites</dt><dd>Tap the heart on a post's card or in its player controls. Favourites are saved on this device, not in your Reddit account, and can be browsed and shuffled with the Favourites filter.</dd>
+      <dt>Unseen</dt><dd>Turn on Unseen in the picker to show and shuffle only posts that have not yet played on this device.</dd>
+      <dt>Swipe to skip</dt><dd>On a touch screen, swipe left across a pane to skip to its next shuffled post. Only that pane changes.</dd>
+      <dt>Posts that can't play</dt><dd>While a pane is shuffling, a post whose media has been removed or cannot be played is skipped automatically. If several in a row fail, the pane stops and shows the error with Retry.</dd>
+      <dt>Next post</dt><dd>Open a pane's controls and tap the next-track icon beside Play.</dd>
+      <dt>Repeat a post</dt><dd>Open that pane's controls and tap the repeat-arrows button. Amber means the post stays until you turn repeat off or skip.</dd>
+      <dt>Post info</dt><dd>Open a pane's controls and tap i to see the post's title, subreddit and author, with a link to open it on Reddit.</dd>
+      <dt>Cycle audio</dt><dd>Turn on Cycle audio to switch the audible pane every 20 seconds, or your own interval. Only playing videos with sound take part.</dd>
+      <dt>Mix audio</dt><dd>Enable Mix audio, then tap each pane's small speaker icon to turn its sound on or off independently. All audio enables every loaded pane; Mute all silences them without pausing.</dd>
+      <dt>Double tap</dt><dd>Expands that pane to fill the screen. Double tap again to return.</dd>
+      <dt>Fill screen button</dt><dd>Hides the toolbar and removes the gaps between panes so the posts fill the whole screen, edge to edge, including behind the status bar and notch. On iPhone, Safari always keeps its own bars; open the app from the Home Screen for true full screen. Tap the small inward-arrow icon at the top right to return.</dd>
+      <dt>Pane count</dt><dd>Choose 1 to 12 panes. Many simultaneous videos depend on your device and network; if panes stall, use fewer.</dd>
+      <dt data-desktop hidden>Volume</dt><dd data-desktop hidden>Open a pane's controls to set its own volume from 0% to 100%.</dd>
+      <dt>Keep the screen awake</dt><dd>While posts play, the app asks the device not to dim or sleep. Battery-saving settings may prevent this.</dd>
+      <dt>Tap an empty pane</dt><dd>Opens the picker.</dd>
+    </dl>
+    <h3>Reddit error log <span id="diag-count" class="dim mono"></span></h3>
+    <p class="dim">Each failed Reddit request is recorded here with its time, request, status and Reddit's reply.</p>
+    <pre id="diag-list" class="diag mono"></pre>
+    <div class="stash-actions">
+      <button id="diag-copy" class="chip" type="button">Copy log</button>
+      <button id="diag-clear" class="chip" type="button">Clear log</button>
+      <button id="seen-clear" class="chip" type="button">Forget seen posts</button>
+    </div>
+    <h3>Install on iPhone</h3>
+    <ol>
+      <li>Open this page in Safari.</li>
+      <li>Tap the Share button.</li>
+      <li>Choose Add to Home Screen, then Add.</li>
+    </ol>
+    <p class="dim">Launched from the Home Screen it runs without browser bars. Playback pauses whenever the app goes to the background, which is an iOS rule. Tap Resume when you return. The Home Screen app keeps its own feeds and sign-in, separate from Safari.</p>
+    <p class="dim">Some iPhone Safari versions restrict multiple audible streams; turn Mix audio off if videos pause.</p>
+    <p class="dim" id="wake-status">Screen wake lock is requested automatically during playback.</p>
+  </div>
+</div>
+
+<script src="config.js?v=reddit-1"></script>
+<script src="reddit-local.js?v=reddit-1"></script>
+<script src="setup.js?v=reddit-1"></script>
+<script src="playback.js?v=reddit-1"></script>
+<script src="app.js?v=reddit-1"></script>
+</body>
+</html>

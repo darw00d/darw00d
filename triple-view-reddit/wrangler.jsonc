@@ -1,0 +1,12 @@
+// Cloudflare Workers deployment: serve the static app in ./public.
+// There is no Worker script; Cloudflare serves the files directly and applies public/_headers.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "triple-view-reddit",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./public",
+    "not_found_handling": "none",
+    "html_handling": "auto-trailing-slash"
+  }
+}
