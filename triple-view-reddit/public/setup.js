@@ -19,11 +19,12 @@
     $("setup-cancel").hidden = !LOCAL.configured();
     $("setup-access").textContent = s.signedIn ? "Signed in to Reddit" + (s.userName ? " as u/" + s.userName : "") + ". Private custom feeds are available." :
       s.clientId ? "Using your Reddit app ID without a sign-in: public subreddits and public custom feeds." :
-        "No sign-in: this browser reads Reddit's public pages directly. If feeds fail to load, add a Reddit app ID below.";
+        "No sign-in: this browser tries Reddit's public pages directly, which Reddit often refuses. If feeds fail to load, add a Reddit app ID below.";
   }
   function showForm(text, good) {
     $("setup-feeds").value = LOCAL.feedsText();
     $("setup-client").value = LOCAL.status().clientId;
+    $("setup-secret").value = LOCAL.status().clientSecret;
     render(); message(text || "", good);
     // Open the Reddit access section when it is in use or the feeds need it.
     if (LOCAL.status().clientId || (text && !good)) $("setup-more").open = true;
@@ -36,7 +37,7 @@
     current.resolve(LOCAL.status());
   }
   function save() {
-    LOCAL.saveSettings({ feedsText: $("setup-feeds").value, clientId: $("setup-client").value });
+    LOCAL.saveSettings({ feedsText: $("setup-feeds").value, clientId: $("setup-client").value, clientSecret: $("setup-secret").value });
     $("setup-feeds").value = LOCAL.feedsText();
   }
   function reset() {
@@ -73,7 +74,7 @@
     if (busy) return;
     try {
       // Save what has been typed so it survives the trip to Reddit and back.
-      LOCAL.saveSettings({ feedsText: $("setup-feeds").value, clientId: $("setup-client").value, allowEmpty: true });
+      LOCAL.saveSettings({ feedsText: $("setup-feeds").value, clientId: $("setup-client").value, clientSecret: $("setup-secret").value, allowEmpty: true });
       LOCAL.beginSignIn();
     } catch (error) { message(error.message); }
   });

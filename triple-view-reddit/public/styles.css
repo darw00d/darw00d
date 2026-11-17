@@ -28,7 +28,7 @@ h1,h2,h3{margin:0;font-weight:800;letter-spacing:-.02em}
 .card p{margin:0;line-height:1.5}
 .login{align-items:stretch}
 .lbl{font-family:var(--m);font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--dim);margin-top:10px}
-input[type=search],#setup-client,#setup-feeds{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:14px;font-size:16px;transition:border-color .2s,box-shadow .2s}
+input[type=search],#setup-client,#setup-secret,#setup-feeds{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:14px;font-size:16px;transition:border-color .2s,box-shadow .2s}
 #view-setup{position:fixed;inset:0;height:100dvh;min-height:0;overflow-y:auto;justify-content:flex-start}
 #view-setup .card{flex-shrink:0;margin:auto 0;width:min(520px,100%)}
 #setup-feeds{font-family:var(--m);font-size:15px;line-height:1.5;color:var(--ink);resize:vertical;min-height:132px;white-space:pre;overflow-x:auto}

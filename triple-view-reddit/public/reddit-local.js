@@ -100,14 +100,19 @@
   }
   settings.feeds = settings.feeds.filter(function (f) { return f && typeof f.id === "string" && typeof f.path === "string"; });
   settings.clientId = typeof settings.clientId === "string" ? settings.clientId : "";
+  // Only "web app" and "personal use script" Reddit apps have a secret. It is
+  // kept in this browser only and sent only to Reddit; never put one in config.js.
+  settings.clientSecret = typeof settings.clientSecret === "string" ? settings.clientSecret : "";
   function configured() { return settings.feeds.length > 0; }
   function saveSettings(input) {
     var feeds = parseFeeds(input.feedsText);
     if (!feeds.length && !input.allowEmpty) throw ApiError("Add at least one subreddit or custom feed.", 400, "FEED_INVALID");
     var clientId = String(input.clientId || "").trim();
     if (clientId && !/^[A-Za-z0-9_-]{10,40}$/.test(clientId)) throw ApiError("That does not look like a Reddit app ID. It is the short code shown under the app's name on reddit.com/prefs/apps.", 400, "CLIENT_ID");
-    if (clientId !== settings.clientId) { auth = null; write(AUTH_KEY, null); }
-    settings = { feeds: feeds, clientId: clientId };
+    var clientSecret = clientId ? String(input.clientSecret || "").trim() : "";
+    if (clientSecret && !/^[A-Za-z0-9_-]{16,80}$/.test(clientSecret)) throw ApiError("That does not look like a Reddit app secret. It is the longer code shown next to “secret” when you edit the app on reddit.com/prefs/apps.", 400, "CLIENT_ID");
+    if (clientId !== settings.clientId || clientSecret !== settings.clientSecret) { auth = null; write(AUTH_KEY, null); }
+    settings = { feeds: feeds, clientId: clientId, clientSecret: clientSecret };
     write(SETTINGS_KEY, settings);
     listings.clear(); randomState.clear();
     lastState = null;
@@ -135,12 +140,13 @@
   if (!auth || typeof auth !== "object" || auth.clientId !== settings.clientId) auth = null;
   var tokenJob = null;
   function redirectURI() { return new URL("./", root.location.href).href.replace(/[?#].*$/, ""); }
+  function basic(clientId) { return "Basic " + root.btoa(clientId + ":" + (clientId === settings.clientId ? settings.clientSecret : "")); }
   async function tokenRequest(params, clientId) {
     var response;
     try {
       response = await root.fetch("https://www.reddit.com/api/v1/access_token", {
         method: "POST", mode: "cors", credentials: "omit", cache: "no-store",
-        headers: { Authorization: "Basic " + root.btoa(clientId + ":"), "Content-Type": "application/x-www-form-urlencoded" },
+        headers: { Authorization: basic(clientId), "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams(params).toString()
       });
     } catch (_) {
@@ -148,7 +154,7 @@
     }
     var data = null;
     try { data = await response.json(); } catch (_) { data = null; }
-    if (response.status === 401) throw ApiError("Reddit did not accept this app ID. Check it against reddit.com/prefs/apps, and that the app's type is “installed app”.", 401, "CLIENT_ID");
+    if (response.status === 401) throw ApiError(settings.clientSecret ? "Reddit did not accept this app ID and secret. Check both against reddit.com/prefs/apps." : "Reddit did not accept this app ID. Check it against reddit.com/prefs/apps. A “web app” or “personal use script” also needs its secret.", 401, "CLIENT_ID");
     if (!response.ok || !data || data.error || !data.access_token) {
       throw ApiError("Reddit sign-in failed" + (data && data.error ? " (" + String(data.error).slice(0, 80) + ")" : " (HTTP " + response.status + ")") + ".", 502, "REDDIT_AUTH", { grantError: data && data.error });
     }
@@ -179,7 +185,9 @@
           auth = null; write(AUTH_KEY, null);
         }
       }
-      storeToken(await tokenRequest({ grant_type: "https://oauth.reddit.com/grants/installed_client", device_id: deviceId }, clientId), "app", clientId, null);
+      // An app with a secret asks for app-only access in its own name; an installed app does so per device.
+      var grant = settings.clientSecret ? { grant_type: "client_credentials" } : { grant_type: "https://oauth.reddit.com/grants/installed_client", device_id: deviceId };
+      storeToken(await tokenRequest(grant, clientId), "app", clientId, null);
       return auth.access;
     })();
     tokenJob.then(function () { tokenJob = null; }, function () { tokenJob = null; });
@@ -228,7 +236,7 @@
       try {
         await root.fetch("https://www.reddit.com/api/v1/revoke_token", {
           method: "POST", mode: "cors", credentials: "omit",
-          headers: { Authorization: "Basic " + root.btoa(old.clientId + ":"), "Content-Type": "application/x-www-form-urlencoded" },
+          headers: { Authorization: basic(old.clientId), "Content-Type": "application/x-www-form-urlencoded" },
           body: new URLSearchParams({ token: old.refresh, token_type_hint: "refresh_token" }).toString()
         });
       } catch (_) { /* already signed out on this device */ }
@@ -687,7 +695,7 @@
   }
   function status() {
     return {
-      connected: configured(), feeds: settings.feeds.length, clientId: settings.clientId,
+      connected: configured(), feeds: settings.feeds.length, clientId: settings.clientId, clientSecret: settings.clientSecret,
       signedIn: !!(auth && auth.mode === "user"), userName: auth && auth.mode === "user" && auth.user || "",
       access: accessLabel(), redirectURI: redirectURI()
     };

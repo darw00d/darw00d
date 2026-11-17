@@ -68,11 +68,19 @@ The Feeds screen has three ways to reach Reddit:
    the browser's local storage and sent only to Reddit; **Sign out of Reddit**
    revokes it.
 
-To get an app ID: open <https://www.reddit.com/prefs/apps>, choose **create
-app**, select **installed app**, and set the **redirect uri** to the address
-shown on the Feeds screen (the app's own address, for example
-`https://triple-view-reddit.example.workers.dev/`). The app ID is the short code
-under the app's name. There is no secret.
+Any app listed at <https://www.reddit.com/prefs/apps> works, including one made
+earlier. The app ID is the short code under the app's name.
+
+- An **installed app** has no secret: enter just the ID.
+- A **web app** or **personal use script** also needs its secret (click **edit**
+  on the app to see it). The secret is stored in the browser's local storage on
+  that device and sent only to Reddit. Never put it in `public/config.js`.
+- Sign in with Reddit needs the app's **redirect uri** to be the address shown
+  on the Feeds screen (the app's own address, with the final slash).
+
+Reddit now restricts creating new apps, and it refuses unsigned requests from
+web pages and from Cloudflare Workers, so reusing an existing app is the
+dependable route.
 
 `public/config.js` can pre-fill feeds and the app ID for a fresh device.
 

@@ -17,7 +17,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/svg+xml" href="icon.svg">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=reddit-1">
+<link rel="stylesheet" href="styles.css?v=reddit-2">
 </head>
 <body>
 <div id="offline" class="offline" role="status" hidden>You are offline. The app is available, but nothing can play until the connection returns.</div>
@@ -51,15 +51,18 @@
       <div class="setup-body">
         <p id="setup-access" class="notice"></p>
         <label for="setup-client" class="lbl">Reddit app ID</label>
-        <input id="setup-client" name="client" type="text" inputmode="text" autocapitalize="off" spellcheck="false" maxlength="40" placeholder="Leave empty to use Reddit without signing in">
-        <p class="dim small">Needed for private custom feeds, and useful if Reddit refuses or limits this browser. Create one at reddit.com/prefs/apps: choose <b>installed app</b> and set its redirect address to:</p>
+        <input id="setup-client" name="client" type="text" inputmode="text" autocapitalize="off" autocomplete="off" spellcheck="false" maxlength="40" placeholder="The short code under the app's name">
+        <label for="setup-secret" class="lbl">App secret</label>
+        <input id="setup-secret" name="secret" type="password" autocapitalize="off" autocomplete="off" spellcheck="false" maxlength="80" placeholder="Only for a web app or personal use script">
+        <p class="dim small">Any app listed at reddit.com/prefs/apps works, including one you made earlier. An <b>installed app</b> has no secret: leave that empty. A <b>web app</b> or <b>personal use script</b> needs the secret shown when you click edit on it.</p>
+        <p class="dim small">To use Sign in with Reddit (needed only for private custom feeds), the app's redirect address on Reddit must be exactly:</p>
         <p class="redirect"><code id="setup-redirect"></code> <button id="setup-copy" class="chip" type="button">Copy</button></p>
         <div class="stash-actions">
           <button id="setup-signin" class="chip" type="button">Sign in with Reddit</button>
           <button id="setup-import" class="chip" type="button" hidden>Add my custom feeds</button>
           <button id="setup-signout" class="chip" type="button" hidden>Sign out of Reddit</button>
         </div>
-        <p class="dim small">The app ID alone opens public feeds. Sign in with Reddit as well to open your private custom feeds. The sign-in is kept only in this browser and goes only to Reddit.</p>
+        <p class="dim small">The app ID (with its secret, if it has one) opens public subreddits and public custom feeds. Sign in with Reddit as well to open private custom feeds. The ID, secret and sign-in are kept only in this browser and go only to Reddit.</p>
       </div>
     </details>
     <p id="setup-error" class="form-error" role="alert" hidden></p>
@@ -237,10 +240,10 @@
   </div>
 </div>
 
-<script src="config.js?v=reddit-1"></script>
-<script src="reddit-local.js?v=reddit-1"></script>
-<script src="setup.js?v=reddit-1"></script>
-<script src="playback.js?v=reddit-1"></script>
-<script src="app.js?v=reddit-1"></script>
+<script src="config.js?v=reddit-2"></script>
+<script src="reddit-local.js?v=reddit-2"></script>
+<script src="setup.js?v=reddit-2"></script>
+<script src="playback.js?v=reddit-2"></script>
+<script src="app.js?v=reddit-2"></script>
 </body>
 </html>
