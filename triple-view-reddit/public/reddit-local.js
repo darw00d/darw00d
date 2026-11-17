@@ -536,7 +536,9 @@
 
   async function items(o) {
     var sel = selectedFeeds(o.parentId);
-    var typeOk = function (it) { return (!o.type || it.type === o.type) && (!o.unplayed || !seen.has(it.id)); };
+    // o.type is one or more of video, gif, image joined by commas; empty means all.
+    var kinds = o.type ? o.type.split(",") : null;
+    var typeOk = function (it) { return (!kinds || kinds.indexOf(it.type) >= 0) && (!o.unplayed || !seen.has(it.id)); };
     var byTitle = titleMatch(o.search);
     function page(list, moreToCome) {
       return { items: list.slice(o.startIndex, o.startIndex + o.limit).map(out), total: list.length, more: !!moreToCome, startIndex: o.startIndex };
@@ -721,7 +723,7 @@
     if (p === "/api/libraries") return settings.feeds.map(function (f) { return { id: f.id, name: f.label }; });
     if (p === "/api/items") {
       var type = q.get("type") || "", sort = q.get("sort") || "hot", seed = q.get("seed") || "";
-      if (type && ["video", "gif", "image"].indexOf(type) < 0) throw ApiError("Invalid media type.", 400);
+      if (type && !type.split(",").every(function (t) { return ["video", "gif", "image"].indexOf(t) >= 0; })) throw ApiError("Invalid media type.", 400);
       if (SORTS.indexOf(sort) < 0) throw ApiError("Invalid sort order.", 400);
       if (sort === "random" && !/^[a-zA-Z0-9_-]{8,80}$/.test(seed)) throw ApiError("Shuffle needs a valid seed.", 400);
       return items({

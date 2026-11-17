@@ -100,6 +100,9 @@ test("listing: pages, type filter, shuffle, favourites and seen", async () => {
   const images = await L.api("/api/items?sort=hot&type=image&startIndex=90&limit=30");
   assert.ok(images.items.length > 0 && images.items.every((it) => it.type === "image"));
   assert.ok(calls.some((c) => /after=t3_next/.test(c)), "fetches the next page when a filter needs more");
+  const mixed = await L.api("/api/items?sort=hot&type=video,image&startIndex=0&limit=30");
+  assert.ok(mixed.items.some((it) => it.type === "video") && mixed.items.some((it) => it.type === "image"));
+  await assert.rejects(L.api("/api/items?sort=hot&type=video,audio"), /Invalid media type/);
   const a = await L.api("/api/items?sort=random&seed=seed-one-1&startIndex=0&limit=20");
   const b = await L.api("/api/items?sort=random&seed=seed-two-2&startIndex=0&limit=20");
   assert.notDeepStrictEqual(a.items.map((i) => i.id), b.items.map((i) => i.id));

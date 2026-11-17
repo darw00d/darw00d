@@ -17,7 +17,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/svg+xml" href="icon.svg">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=reddit-2">
+<link rel="stylesheet" href="styles.css?v=reddit-3">
 </head>
 <body>
 <div id="offline" class="offline" role="status" hidden>You are offline. The app is available, but nothing can play until the connection returns.</div>
@@ -151,7 +151,7 @@
       <button id="lib-fill-all" class="chip fill-all" type="button">Shuffle into all panes</button>
     </div>
     <p id="lib-favourites-note" class="dim library-note" hidden>Favourites are saved on this device.</p>
-    <div class="seg" id="seg-type" role="group" aria-label="Filter by type">
+    <div class="seg" id="seg-type" role="group" aria-label="Show these types (choose one or more)">
       <button type="button" data-type="" aria-pressed="true">All</button>
       <button type="button" data-type="video" aria-pressed="false">Videos</button>
       <button type="button" data-type="gif" aria-pressed="false">GIFs</button>
@@ -197,7 +197,7 @@
       <dt>Tap a pane</dt><dd>Moves the audio to it without showing player controls. With Mix audio off, every other pane is muted. With Mix audio on, its audio is added without muting the others. GIFs and images are silent.</dd>
       <dt>Tap the audio pane</dt><dd>Shows or hides its controls. They hide on their own after 3 seconds.</dd>
       <dt>Feeds</dt><dd>The Feeds button opens your list of subreddits and custom feeds. Each line is one feed in the picker; All feeds mixes them. Your panes are kept and restored paused when you come back.</dd>
-      <dt>Shuffle all panes</dt><dd>In the picker, choose a feed, a type (videos, GIFs or images), a search, Favourites or Unseen, then tap Shuffle into all panes. Every pane gets a different random post from that selection and keeps shuffling within it. The Shuffle button in the toolbar shows the last selection you used, and tapping it reshuffles every pane from it.</dd>
+      <dt>Shuffle all panes</dt><dd>In the picker, choose a feed, any mix of types (Videos, GIFs and Images can each be switched on or off), a search, Favourites or Unseen, then tap Shuffle into all panes. Every pane gets a different random post from that selection and keeps shuffling within it. The Shuffle button in the toolbar shows the last selection you used, and tapping it reshuffles every pane from it.</dd>
       <dt>Continuous shuffle</dt><dd>Each pane remembers the feed and filters it was chosen with. When a video ends, or an image or short clip has had its Hold time, that pane moves on to another random post from the same selection. Shuffle mixes hot, new and top posts and keeps reaching further back while you watch. Changing the picker later does not affect existing panes.</dd>
       <dt>Hold</dt><dd>How many seconds an image stays up. Clips shorter than this repeat until the time has passed, so a two-second GIF does not flash by. Longer videos always play to the end.</dd>
       <dt>Layout</dt><dd>Smart fit shapes the frames around what is playing: tall posts get tall frames and wide posts wide ones, always filling the screen. Each pane also prefers the next post that suits its frame, so the picture changes without the frames jumping about. Grid shows equal panes. Focus 1 makes pane 1 large with the others around it. Focus 2 makes panes 1 and 2 large. Collage makes a random mosaic. On a phone, tap the Layout button to show these controls.</dd>
@@ -240,10 +240,10 @@
   </div>
 </div>
 
-<script src="config.js?v=reddit-2"></script>
-<script src="reddit-local.js?v=reddit-2"></script>
-<script src="setup.js?v=reddit-2"></script>
-<script src="playback.js?v=reddit-2"></script>
-<script src="app.js?v=reddit-2"></script>
+<script src="config.js?v=reddit-3"></script>
+<script src="reddit-local.js?v=reddit-3"></script>
+<script src="setup.js?v=reddit-3"></script>
+<script src="playback.js?v=reddit-3"></script>
+<script src="app.js?v=reddit-3"></script>
 </body>
 </html>

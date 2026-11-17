@@ -35,7 +35,7 @@ New for Reddit:
   **All feeds** mixes them.
 - **Videos, GIFs and images**: Reddit-hosted video (with sound), Reddit GIFs,
   Redgifs, Imgur GIFs, images and galleries. Text and link posts are skipped.
-  Filter the picker by Videos, GIFs or Images.
+  In the picker, switch Videos, GIFs and Images on in any combination.
 - **Smart fit layout** (the default): frames are shaped around what is playing,
   so tall posts get tall frames and wide posts wide ones, and the frames always
   fill the screen. Frames re-fit only when a new post would be noticeably

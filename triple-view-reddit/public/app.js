@@ -334,12 +334,19 @@
     return next;
   }
 
+  // The media types to show: any mix of video, gif and image, kept as a
+  // comma-joined list. Empty means everything (as does choosing all three).
+  var TYPES = ["video", "gif", "image"];
+  function typeSet(value) {
+    var want = String(value || "").split(","), picked = TYPES.filter(function (t) { return want.indexOf(t) >= 0; });
+    return picked.length === TYPES.length ? "" : picked.join(",");
+  }
   function libraryScope(value) {
     value = value || {};
     return {
       parentId: typeof value.parentId === "string" ? value.parentId.slice(0, 128) : "",
       search: typeof value.search === "string" ? value.search.slice(0, 200) : "",
-      type: ["video", "gif", "image"].indexOf(value.type) >= 0 ? value.type : "",
+      type: typeSet(value.type),
       favourites: value.favourites === true,
       unplayed: value.unplayed === true
     };
@@ -1838,7 +1845,7 @@
   function scopeLabel(scope) {
     var parts = [], lib = scope.parentId && (L.libs || []).find(function (l) { return l.id === scope.parentId; });
     parts.push(scope.parentId ? (lib ? lib.name : "One feed") : "All feeds");
-    if (scope.type) parts.push({ video: "Videos", gif: "GIFs", image: "Images" }[scope.type]);
+    if (scope.type) parts.push(scope.type.split(",").map(function (t) { return { video: "Videos", gif: "GIFs", image: "Images" }[t]; }).join(" + "));
     if (scope.search) parts.push("\u201c" + scope.search + "\u201d");
     if (scope.favourites) parts.push("Favourites");
     if (scope.unplayed) parts.push("Unseen");
@@ -1918,10 +1925,22 @@
     clearTimeout(L.timer); var v = this.value.trim();
     L.timer = setTimeout(function () { L.q = v; L.start = 0; loadItems(); }, 300);
   });
+  // Videos, GIFs and Images can be switched on in any combination; All clears them.
+  function renderTypes() {
+    var on = L.type ? L.type.split(",") : [];
+    $("#seg-type").querySelectorAll("button").forEach(function (x) {
+      x.setAttribute("aria-pressed", String(x.dataset.type ? on.indexOf(x.dataset.type) >= 0 : !on.length));
+    });
+  }
   $("#seg-type").addEventListener("click", function (e) {
     var b = e.target.closest("button"); if (!b) return;
-    L.type = b.dataset.type; L.start = 0;
-    this.querySelectorAll("button").forEach(function (x) { x.setAttribute("aria-pressed", String(x === b)); });
+    var on = L.type ? L.type.split(",") : [], t = b.dataset.type;
+    if (!t) on = [];
+    else if (on.indexOf(t) >= 0) on = on.filter(function (x) { return x !== t; });
+    else on.push(t);
+    L.type = typeSet(on.join(",")); L.start = 0;
+    if (L.sort === "random") L.seed = uuid();
+    renderTypes();
     loadItems();
   });
 
