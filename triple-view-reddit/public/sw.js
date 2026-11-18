@@ -1,6 +1,6 @@
 // Shell-only cache for the app's own files, so it opens offline.
 // Reddit data and media are never cached or stored here.
-const CACHE = "triple-view-reddit-shell-4";
+const CACHE = "triple-view-reddit-shell-5";
 const SHELL = ["./", "index.html", "app.js", "config.js", "reddit-local.js", "setup.js", "playback.js", "styles.css", "manifest.json", "icon.svg", "apple-touch-icon.png"];
 const SHELL_URLS = SHELL.map((p) => new URL(p, self.registration.scope).pathname);
 

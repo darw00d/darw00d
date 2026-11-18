@@ -43,7 +43,9 @@
   // options: hls (bool), onError(message), onBlocked()
   function attach(video, url, options) {
     options = options || {};
-    var disposed = false, engine = null, timer = null, recovered = false, ready;
+    // settled: the source is set, so play() can run at once. Safari only lets
+    // a video start with sound from inside the tap itself, not a moment later.
+    var disposed = false, engine = null, timer = null, recovered = false, ready, settled = false;
     function destroy() {
       if (disposed) return;
       disposed = true;
@@ -61,7 +63,7 @@
     } else if (!options.hls || profile.native) {
       // Failures surface through the video element's own error event.
       video.src = url; video.load();
-      ready = Promise.resolve();
+      ready = Promise.resolve(); settled = true;
     } else if (!profile.mse) {
       ready = Promise.reject(new Error("This browser cannot play Reddit-hosted video with sound."));
     } else {
@@ -87,7 +89,7 @@
             fail(data.type === Hls.ErrorTypes.NETWORK_ERROR ? "This video could not be loaded. It may have been removed." : "This video could not be decoded.");
           });
           engine.on(Hls.Events.MEDIA_ATTACHED, function () { if (!disposed) engine.loadSource(url); });
-          engine.on(Hls.Events.MANIFEST_PARSED, function () { root.clearTimeout(timer); resolve(); });
+          engine.on(Hls.Events.MANIFEST_PARSED, function () { root.clearTimeout(timer); settled = true; resolve(); });
           engine.attachMedia(video);
         });
       });
@@ -95,10 +97,11 @@
     ready.catch(function (error) { fail(error.message || "This post could not start."); });
     function play() {
       if (disposed) return Promise.reject(Object.assign(new Error("Playback cancelled."), { name: "AbortError" }));
-      return ready.then(function () {
+      var started = settled ? Promise.resolve(video.play()) : ready.then(function () {
         if (disposed) throw Object.assign(new Error("Playback cancelled."), { name: "AbortError" });
         return video.play();
-      }).catch(function (error) {
+      });
+      return started.catch(function (error) {
         if (!disposed && error && error.name === "NotAllowedError" && options.onBlocked) options.onBlocked();
         throw error;
       });

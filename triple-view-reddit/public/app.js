@@ -169,7 +169,10 @@
     var img = document.createElement("img");
     img.alt = ""; img.decoding = "async"; img.draggable = false; img.hidden = true;
     var bg = h("div", { class: "bg", "aria-hidden": "true" });
-    var f = { real: v, img: img, bg: bg, node: h("div", { class: "media" }, [bg, v, img]), still: null, loop: false, autoLoop: false, item: null, token: 0, error: null, needsResume: false, reload: false, started: false, pending: null, seeking: false, lastSave: 0, volume: 1, controller: null };
+    // One sound player per pane, reused for every post: Safari lets a player
+    // make sound only once a tap has started it, and that permission stays with it.
+    var auxEl = document.createElement("audio"); auxEl.preload = "auto";
+    var f = { auxEl: auxEl, real: v, img: img, bg: bg, node: h("div", { class: "media" }, [bg, v, img]), still: null, loop: false, autoLoop: false, item: null, token: 0, error: null, needsResume: false, reload: false, started: false, pending: null, seeking: false, lastSave: 0, volume: 1, controller: null };
     f.video = mediaFacade(f);
     ["play", "playing", "pause", "waiting", "canplay", "timeupdate", "durationchange", "loadedmetadata", "ended", "error", "seeked"].forEach(function (ev) {
       v.addEventListener(ev, function () { if (!f.still) onVideoEvent(f, ev); });
@@ -205,7 +208,7 @@
   }
   function clearAux(f) {
     var a = f.aux; f.aux = null;
-    if (a) { a.pause(); a.removeAttribute("src"); a.load(); }
+    if (a) { a.onerror = a.onloadedmetadata = null; a.pause(); a.removeAttribute("src"); a.load(); }
   }
   // Reddit's MP4 has no sound; its sound is a separate file named in the DASH
   // playlist. Play it alongside, trying each likely address until one loads.
@@ -213,7 +216,7 @@
     var tok = f.token;
     LOCAL.dashAudio(src.dash, src.url).then(function (urls) {
       if (f.token !== tok || !f.item) return;
-      var a = new Audio(); a.preload = "auto";
+      var a = f.auxEl;
       a.muted = f.real.muted; a.volume = f.real.volume;
       function next() {
         if (f.token !== tok || f.aux !== a) return;
@@ -221,8 +224,8 @@
         if (!url) { clearAux(f); f.item.audio = false; LOCAL.mediaFailed(f.item, { kind: "sound", url: src.url }, "No sound file found for Reddit's MP4."); return; }
         a.src = url; a.load();
       }
-      a.addEventListener("error", next);
-      a.addEventListener("loadedmetadata", function () { if (f.token === tok && f.aux === a) auxSync(f, true); });
+      a.onerror = next;
+      a.onloadedmetadata = function () { if (f.token === tok && f.aux === a) auxSync(f, true); };
       f.aux = a; next();
       auxPlay(f);
     });
