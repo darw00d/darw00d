@@ -37,7 +37,7 @@ export async function redgifs(request, id) {
       const gif = (await response.json()).gif || {};
       const urls = gif.urls || {};
       const https = (u) => (typeof u === "string" && u.startsWith("https://") ? u : "");
-      return reply({ hd: https(urls.hd), sd: https(urls.sd), width: gif.width || 0, height: gif.height || 0, duration: gif.duration || 0, hasAudio: !!gif.hasAudio }, 200, "private, max-age=600");
+      return reply({ hd: https(urls.hd), sd: https(urls.sd), poster: https(urls.poster) || https(urls.thumbnail), width: gif.width || 0, height: gif.height || 0, duration: gif.duration || 0, hasAudio: !!gif.hasAudio }, 200, "private, max-age=600");
     }
     return reply({ error: "redgifs 401" }, 502);
   } catch (error) {

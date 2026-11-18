@@ -261,3 +261,7 @@ input:focus{outline:0;border-color:var(--amber);box-shadow:0 0 0 3px #ffb34733}
 #btn-layout-toggle[aria-expanded=true]{color:var(--amber);border-color:var(--amber);background:var(--amber-d)}
 #btn-cover[aria-pressed=true]{color:var(--amber);border-color:var(--amber);background:var(--amber-d)}
 .notice.good{margin:0}
+/* Picker card clip previews */
+.it .th .th-clip{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none;background:transparent}
+.it .th.no-picture::before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(135deg,#1c1520 0 10px,#191219 10px 20px)}
+.it .th.no-picture::after{content:"No preview";position:absolute;inset:0;display:grid;place-items:center;font-family:var(--m);font-size:11px;color:var(--dim)}

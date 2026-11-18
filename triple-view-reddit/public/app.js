@@ -1838,6 +1838,7 @@
   function loadItems() {
     var body = $("#lib-body"), my = ++L.req, revision = favouriteRevision;
     if (L.ctrl) L.ctrl.abort(); L.ctrl = window.AbortController ? new AbortController() : null;
+    cardQueue = []; if (cardObserver) cardObserver.disconnect();
     body.innerHTML = ""; body.setAttribute("aria-busy", "true");
     for (var k = 0; k < 8; k++) body.appendChild(h("div", { class: "sk-card" }));
     var qs = "parentId=" + encodeURIComponent(L.parent) + "&search=" + encodeURIComponent(L.q) + "&type=" + encodeURIComponent(L.type) + "&startIndex=" + L.start + "&limit=" + L.limit;
@@ -1865,9 +1866,60 @@
       L.total = 0; L.more = false; pager();
     });
   }
+  // Picker card pictures. Reddit's preview picture where there is one;
+  // otherwise the first frame of a small silent copy of the clip, or for
+  // Redgifs, its poster from the app's lookup. Fetched only as cards scroll
+  // into view. On a computer, pointing at a card plays its clip.
+  function setPicture(th, url) { th.style.backgroundImage = "url(\"" + url.replace(/["\\\n]/g, "") + "\")"; }
+  function clipPreview(th, url, autoplay) {
+    if (th.querySelector("video")) return th.querySelector("video");
+    var v = h("video", { class: "th-clip", muted: true, playsinline: true, "aria-hidden": "true" });
+    v.muted = true; v.playsInline = true; v.loop = true; v.preload = "metadata";
+    v.src = url + (autoplay ? "" : "#t=0.1");
+    th.appendChild(v);
+    v.addEventListener("error", function () { v.remove(); th.classList.add("no-picture"); });
+    return v;
+  }
+  var cardObserver = null, cardQueue = [], cardBusy = 0;
+  function pumpCards() {
+    while (cardBusy < 2 && cardQueue.length) {
+      var job = cardQueue.shift(); cardBusy++;
+      LOCAL.preview(job.it).then(function (job, found) {
+        if (found && found.clip) job.it.clip = found.clip;
+        function useClip() { if (job.it.clip) clipPreview(job.th, job.it.clip); else job.th.classList.add("no-picture"); }
+        if (!found || !found.image) { useClip(); return; }
+        var probe = new Image(); // only show the poster if it really loads
+        probe.onload = function () { job.it.imageUrl = found.image; setPicture(job.th, found.image); };
+        probe.onerror = useClip;
+        probe.src = found.image;
+      }.bind(null, job), function (job) { job.th.classList.add("no-picture"); }.bind(null, job)).finally(function () { cardBusy--; pumpCards(); });
+    }
+  }
+  function watchCard(th, it) {
+    if (!("IntersectionObserver" in window)) { showCard(th, it); return; }
+    if (!cardObserver) cardObserver = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) { if (e.isIntersecting) { cardObserver.unobserve(e.target); showCard(e.target, e.target._item); } });
+    }, { root: $("#lib-body"), rootMargin: "200px" });
+    th._item = it; cardObserver.observe(th);
+  }
+  function showCard(th, it) {
+    if (!document.contains(th)) return;
+    if (it.clip) clipPreview(th, it.clip);
+    else if (it.media && it.media.kind === "redgifs") { cardQueue.push({ th: th, it: it }); pumpCards(); }
+    else th.classList.add("no-picture");
+  }
   function itemCard(it, n) {
     var th = h("div", { class: "th" });
-    if (it.imageUrl) th.style.backgroundImage = "url(\"" + it.imageUrl.replace(/"/g, "%22") + "\")";
+    if (it.imageUrl) setPicture(th, it.imageUrl);
+    else watchCard(th, it);
+    if (it.type !== "image" && matchMedia("(hover:hover)").matches) {
+      th.addEventListener("pointerenter", function () {
+        var url = it.clip; if (!url) return;
+        var v = clipPreview(th, url, true); th.classList.add("previewing");
+        var p = v.play(); if (p && p.catch) p.catch(function () {});
+      });
+      th.addEventListener("pointerleave", function () { var v = th.querySelector("video"); if (v) v.pause(); th.classList.remove("previewing"); });
+    }
     var sub = [it.seriesName, { video: "Video", gif: "GIF", image: "Image" }[it.type], it.duration ? fmt(it.duration) : null].filter(Boolean).join(" · ");
     var b = h("button", { class: "it", type: "button", style: "animation-delay:" + Math.min(n, 12) * 25 + "ms", "aria-label": "Play " + it.name + (it.seriesName ? ", " + it.seriesName : "") + " in pane " + (L.slot + 1), onclick: function () {
       var slot = L.slot; closeModal();

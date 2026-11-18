@@ -369,10 +369,14 @@
       name: String(d.title || "Untitled").slice(0, 300), seriesName: "r/" + String(d.subreddit || ""), author: String(d.author || ""),
       link: "https://www.reddit.com" + String(d.permalink || ""), nsfw: !!d.over_18, at: Date.now()
     };
+    // clip: a small silent copy of a video or GIF, shown on the picker card
+    // when Reddit sends no preview picture (it often leaves those out of NSFW
+    // posts for visitors who are not signed in).
+    var clip = "";
     function item(suffix, type, media, w, h, duration, audio, thumb) {
       return Object.assign({}, base, {
         id: id + suffix, type: type, media: media, w: Math.round(Number(w) || 0), h: Math.round(Number(h) || 0),
-        duration: Number(duration) || 0, audio: !!audio, imageUrl: thumb || "", isFavourite: false
+        duration: Number(duration) || 0, audio: !!audio, imageUrl: thumb || "", clip: http(clip), isFavourite: false
       });
     }
     var pv = s.preview && Array.isArray(s.preview.images) && s.preview.images[0] || null;
@@ -388,6 +392,7 @@
       // file); its plain MP4 is always silent. So anything that may have sound
       // plays as HLS first. Only a post Reddit marks as a GIF without sound
       // goes straight to the plain file.
+      clip = http(rv.scrubber_media_url) || http(rv.fallback_url);
       var silent = !!rv.is_gif && rv.has_audio !== true;
       var media = !http(rv.hls_url) || (silent && http(rv.fallback_url)) ? { kind: "mp4", url: http(rv.fallback_url) || rv.hls_url } :
         { kind: "hls", url: rv.hls_url, alt: http(rv.fallback_url), dash: http(rv.dash_url) };
@@ -398,13 +403,18 @@
       var alt = rvp && http(rvp.fallback_url) || "";
       // Reddit's copy of the clip's poster image carries the clip's file name.
       var named = /redgifs\.com\/([A-Z][A-Za-z0-9]{4,80})(?:-[A-Za-z]+)?\.(?:jpe?g|png|webp|mp4)/.exec(JSON.stringify([oe, s.preview || null, s.thumbnail || ""]));
+      clip = alt || (named ? "https://media.redgifs.com/" + named[1] + "-mobile.mp4" : "");
+      if (!thumb && !http(oe.thumbnail_url) && named) thumb = "https://media.redgifs.com/" + named[1] + "-poster.jpg";
       return [item("", "gif", { kind: "redgifs", rg: m[1].toLowerCase(), name: named ? named[1] : "", alt: alt },
         rvp && rvp.width || pvw || oe.width, rvp && rvp.height || pvh || oe.height, rvp && rvp.duration, false, thumb || http(oe.thumbnail_url))];
     }
     if ((m = /^https?:\/\/(?:i\.|m\.|www\.)?imgur\.com\/([A-Za-z0-9]{5,10})\.(?:gifv|mp4|gif)\b/i.exec(url))) {
+      clip = "https://i.imgur.com/" + m[1] + ".mp4";
+      if (!thumb) thumb = "https://i.imgur.com/" + m[1] + "m.jpg";
       return [item("", "gif", { kind: "mp4", url: "https://i.imgur.com/" + m[1] + ".mp4", alt: rvp && http(rvp.fallback_url) || "" }, rvp && rvp.width || pvw, rvp && rvp.height || pvh, rvp && rvp.duration, false, thumb)];
     }
     if (rvp && http(rvp.fallback_url)) {
+      clip = rvp.fallback_url;
       return [item("", "gif", { kind: "mp4", url: rvp.fallback_url }, rvp.width || pvw, rvp.height || pvh, rvp.duration, false, thumb)];
     }
     if (s.is_gallery && s.media_metadata && s.gallery_data && Array.isArray(s.gallery_data.items)) {
@@ -415,6 +425,7 @@
         var previews = (meta.p || []).filter(function (p) { return http(p.u); });
         var small = (previews.find(function (p) { return p.x >= 320; }) || previews[previews.length - 1] || {}).u || "";
         var entry = null;
+        clip = meta.e === "AnimatedImage" ? http(meta.s.mp4) : "";
         if (meta.e === "AnimatedImage" && http(meta.s.mp4)) entry = item("_" + (n + 1), "gif", { kind: "mp4", url: meta.s.mp4 }, meta.s.x, meta.s.y, 0, false, small);
         else if (meta.e === "AnimatedImage" && http(meta.s.gif)) entry = item("_" + (n + 1), "gif", { kind: "img", url: meta.s.gif }, meta.s.x, meta.s.y, 0, false, small);
         else if (http(meta.s.u)) {
@@ -426,6 +437,7 @@
       return out;
     }
     var mp4 = pv && pv.variants && pv.variants.mp4 && pv.variants.mp4.source;
+    if (mp4 && http(mp4.url)) clip = mp4.url;
     if (mp4 && http(mp4.url)) return [item("", "gif", { kind: "mp4", url: mp4.url }, mp4.width || pvw, mp4.height || pvh, 0, false, thumb)];
     var isImage = s.post_hint === "image" || /\.(?:jpe?g|png|webp|gif)(?:\?.*)?$/i.test(url);
     if (isImage && !s.is_self) {
@@ -694,6 +706,13 @@
     if (!sources.length) throw ApiError("Redgifs could not be reached for this clip.", 502, "REDGIFS");
     return Object.assign({ sources: sources }, extra);
   }
+  // A picture (or small clip) for a Redgifs card that Reddit sent none for.
+  async function preview(item) {
+    var media = item && item.media;
+    if (!media || media.kind !== "redgifs") return null;
+    var found = await redgifs(media.rg);
+    return { image: http(found.poster), clip: http(found.sd) || http(found.hd) };
+  }
   // The sound file that goes with Reddit's silent MP4: named in the DASH
   // playlist, with Reddit's usual names as a fallback.
   async function dashAudio(dashUrl, videoUrl) {
@@ -775,7 +794,7 @@
   }
 
   root.TVLocal = {
-    api: api, resolve: resolve, resolveSync: resolveSync, dashAudio: dashAudio, mediaFailed: mediaFailed, markSeen: markSeen, clearSeen: clearSeen,
+    api: api, resolve: resolve, resolveSync: resolveSync, dashAudio: dashAudio, preview: preview, mediaFailed: mediaFailed, markSeen: markSeen, clearSeen: clearSeen,
     seenCount: function () { return seen.size; },
     configured: configured, status: status, saveSettings: saveSettings,
     feedsText: function () { return settings.feeds.map(feedLine).join("\n"); },
