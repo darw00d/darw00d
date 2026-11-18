@@ -143,11 +143,13 @@
       get duration() { return f.still ? holdSeconds : v.duration; },
       get loop() { return f.loop; },
       set loop(x) { f.loop = !!x; v.loop = f.loop || !!f.autoLoop; },
-      get muted() { return v.muted; }, set muted(x) { v.muted = x; },
-      get volume() { return v.volume; }, set volume(x) { v.volume = x; },
+      // A separate sound file (f.aux) follows the video's mute and volume at
+      // once, inside the tap that changed them, so iPhone lets it play.
+      get muted() { return v.muted; }, set muted(x) { v.muted = x; if (f.aux) f.aux.muted = x; },
+      get volume() { return v.volume; }, set volume(x) { v.volume = x; if (f.aux) f.aux.volume = x; },
       get readyState() { return f.still ? (f.still.ready ? 4 : 0) : v.readyState; },
       play: function () {
-        if (!f.still) return v.play();
+        if (!f.still) { auxPlay(f); return v.play(); }
         var s = f.still;
         if (s.ended) { s.t = 0; s.ended = false; }
         if (!s.playing) { s.playing = true; s.last = Date.now(); onVideoEvent(f, "play"); if (s.ready) onVideoEvent(f, "playing"); }
@@ -172,6 +174,13 @@
     ["play", "playing", "pause", "waiting", "canplay", "timeupdate", "durationchange", "loadedmetadata", "ended", "error", "seeked"].forEach(function (ev) {
       v.addEventListener(ev, function () { if (!f.still) onVideoEvent(f, ev); });
     });
+    // Keep the separate sound file, when there is one, in step with the picture.
+    v.addEventListener("playing", function () { auxSync(f, true); auxPlay(f); });
+    v.addEventListener("play", function () { auxPlay(f); });
+    ["pause", "waiting", "ended", "emptied"].forEach(function (ev) { v.addEventListener(ev, function () { if (f.aux) f.aux.pause(); }); });
+    v.addEventListener("seeked", function () { auxSync(f, true); });
+    v.addEventListener("timeupdate", function () { auxSync(f, false); });
+    v.addEventListener("ratechange", function () { if (f.aux) f.aux.playbackRate = v.playbackRate; });
     img.addEventListener("load", function () {
       var s = f.still; if (!s || s.ready) return;
       s.ready = true; s.last = Date.now();
@@ -180,6 +189,43 @@
     });
     img.addEventListener("error", function () { if (f.still && !f.still.ready) onVideoEvent(f, "error"); });
     return f;
+  }
+  function auxPlay(f) {
+    var a = f.aux;
+    if (!a || f.real.paused && !f.wantAux) return;
+    f.wantAux = false;
+    a.muted = f.real.muted; a.volume = f.real.volume;
+    var p = a.play(); if (p && p.catch) p.catch(function () {});
+  }
+  function auxSync(f, always) {
+    var a = f.aux; if (!a || !(a.readyState >= 1)) return;
+    var drift = Math.abs(a.currentTime - f.real.currentTime);
+    if (always ? drift > 0.08 : drift > 0.3) { try { a.currentTime = f.real.currentTime; } catch (e) {} }
+    if (!f.real.paused && a.paused) auxPlay(f);
+  }
+  function clearAux(f) {
+    var a = f.aux; f.aux = null;
+    if (a) { a.pause(); a.removeAttribute("src"); a.load(); }
+  }
+  // Reddit's MP4 has no sound; its sound is a separate file named in the DASH
+  // playlist. Play it alongside, trying each likely address until one loads.
+  function attachAux(f, src) {
+    var tok = f.token;
+    LOCAL.dashAudio(src.dash, src.url).then(function (urls) {
+      if (f.token !== tok || !f.item) return;
+      var a = new Audio(); a.preload = "auto";
+      a.muted = f.real.muted; a.volume = f.real.volume;
+      function next() {
+        if (f.token !== tok || f.aux !== a) return;
+        var url = urls.shift();
+        if (!url) { clearAux(f); f.item.audio = false; LOCAL.mediaFailed(f.item, { kind: "sound", url: src.url }, "No sound file found for Reddit's MP4."); return; }
+        a.src = url; a.load();
+      }
+      a.addEventListener("error", next);
+      a.addEventListener("loadedmetadata", function () { if (f.token === tok && f.aux === a) auxSync(f, true); });
+      f.aux = a; next();
+      auxPlay(f);
+    });
   }
   function showStill(f, url) {
     f.still = { t: f.pending || 0, playing: false, ended: false, ready: false, last: 0 };
@@ -218,7 +264,7 @@
     } else if (ev === "error") {
       // hls.js reports its own failures after trying to recover.
       if (!f.still && f.srcKind === "hls" && !PB.profile.native) return;
-      if (!f.still && useAlt(f)) return;
+      if (useAlt(f)) return;
       var c = !f.still && f.real.error && f.real.error.code;
       f.error = f.still ? "This image could not be loaded. It may have been removed." :
         c === 2 ? "Network error while loading this post." : c === 3 ? "This post's video could not be decoded." :
@@ -375,26 +421,32 @@
 
   function attachSource(f, src) {
     var tok = f.token;
-    f.srcKind = src.kind;
+    f.src = src; f.srcKind = src.kind;
     if (src.kind === "img") { showStill(f, src.url); return; }
+    if (src.dash) attachAux(f, src);
     f.controller = PB.attach(f.real, src.url, {
       hls: src.kind === "hls",
       onError: function (message) {
         if (f.token !== tok || !f.item) return;
-        if (useAlt(f)) return;
+        if (useAlt(f, message)) return;
         f.error = message || "This post could not be loaded.";
         var n = idx(f); if (n >= 0) { panes[n].el.classList.remove("buffering"); renderPane(n); } updateWakeLock();
       },
       onBlocked: function () { if (f.token !== tok) return; f.needsResume = true; var n = idx(f); if (n >= 0) renderPane(n); }
     });
   }
-  // Some posts have a second, plainer copy (Reddit's own silent preview).
-  function useAlt(f) {
-    if (!f.alt || !f.item) return false;
-    var url = f.alt; f.alt = "";
-    destroyController(f);
-    attachSource(f, { kind: "mp4", url: url });
-    if (f.autoplay && !document.hidden) playFeed(idx(f));
+  // Most posts have more than one copy: try the next, keeping the sound if
+  // possible (Reddit's own silent copies come last). Each failure is logged.
+  function useAlt(f, message) {
+    if (!f.item) return false;
+    if (f.src) LOCAL.mediaFailed(f.item, f.src, message || (f.real.error ? "Media error " + f.real.error.code + (f.real.error.message ? ": " + f.real.error.message : "") : "Could not load."));
+    if (!f.sources || !f.sources.length) return false;
+    var pos = f.real.currentTime || 0;
+    destroyController(f); clearStill(f);
+    if (pos > 0.5) f.pending = pos;
+    attachSource(f, f.sources.shift());
+    var n = idx(f);
+    if ((f.autoplay || !f.real.paused) && !document.hidden && n >= 0) { f.error = null; playFeed(n); }
     return true;
   }
   function loadItem(i, item, pos, autoplay, loop, scope) {
@@ -405,7 +457,7 @@
     // start with repeat off unless restoring an explicitly saved preference.
     var keepLoop = typeof loop === "boolean" ? loop : !!(f.item && f.item.id === item.id && v.loop);
     f.token++; f.item = item; f.error = null; f.pending = pos > 0 ? pos : null; f.needsResume = false; f.reload = false;
-    f.fromShuffle = false; f.started = false; f.autoLoop = false; f.shownAt = 0; f.lastT = 0; f.alt = ""; f.srcKind = "";
+    f.fromShuffle = false; f.started = false; f.autoLoop = false; f.shownAt = 0; f.lastT = 0; f.sources = []; f.src = null; f.srcKind = "";
     f.autoplay = !!autoplay; f.wantPlay = false; f.resolving = false;
     clearTimeout(f.skipTimer); f.skipTimer = null;
     var tok = f.token;
@@ -421,11 +473,11 @@
     f.real.muted = !audioEnabled(i) || (DESKTOP && f.volume === 0);
     if (DESKTOP) f.real.volume = f.volume;
     function ready(src) {
-      f.resolving = false; f.alt = src.alt || "";
+      f.resolving = false; f.sources = src.sources.slice();
       if (src.w > 0 && src.h > 0) { item.w = src.w; item.h = src.h; }
       if (src.duration > 0) item.duration = src.duration;
       if (typeof src.audio === "boolean") item.audio = src.audio;
-      attachSource(f, src);
+      attachSource(f, f.sources.shift());
       var n = idx(f);
       if (autoplay || f.wantPlay) { f.wantPlay = false; if (n >= 0) { panes[n].el.classList.add("buffering"); playFeed(n); } }
       else if (n >= 0) panes[n].el.classList.remove("buffering");
@@ -457,6 +509,7 @@
   }
   // Callers bump f.token first so media events fired by teardown are ignored.
   function destroyController(f) {
+    clearAux(f);
     var c = f.controller; f.controller = null;
     if (c) { try { c.destroy(); } catch (e) { /* already released */ } }
   }
@@ -520,6 +573,7 @@
     if (f.reload || f.error) { loadItem(i, f.item, f.video.currentTime || f.pending || 0, true); return; }
     if (f.resolving) { f.wantPlay = true; return; } // plays once the media address is known
     var tok = f.token;
+    f.wantAux = true; auxPlay(f); // inside the tap, so iPhone allows the sound file too
     var p = f.controller ? f.controller.play() : f.video.play();
     if (p && p.catch) p.catch(function (e) { if (f.token === tok && idx(f) >= 0 && !f.error && e && e.name === "NotAllowedError") { f.needsResume = true; renderPane(idx(f)); } });
   }
@@ -1664,6 +1718,7 @@
   }
   // ---------- Reddit error log ----------
   function diagnosticLine(d) {
+    if (d.status === "media") return d.time + "  " + d.endpoint + "  failed" + (d.body ? ": " + d.body : "");
     return d.time + "  GET " + d.endpoint + "  " + (d.status === "network" ? "network error" : d.status === "timeout" ? "timed out" : "HTTP " + d.status) +
       "  access: " + d.access + "  requests in flight " + d.requestsInFlight + "  attempt " + d.attempt + (d.retried ? " (retried)" : " (gave up)") +
       (d.body ? "\n    Reddit said: " + d.body.replace(/\s+/g, " ").slice(0, 300) : "");

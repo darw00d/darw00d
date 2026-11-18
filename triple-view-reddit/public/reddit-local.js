@@ -1,6 +1,7 @@
 // Triple View Reddit's data layer, running entirely in the browser.
-// Every request goes straight from this device to Reddit (and to Redgifs for
-// Redgifs posts). Nothing is relayed through a third party.
+// Every Reddit request goes straight from this device to Reddit. Redgifs only
+// answers its own website, so Redgifs clips are looked up through this app's
+// own Cloudflare Worker (worker/redgifs.js), which passes back the clip's address.
 (function (root) {
   "use strict";
   var SETTINGS_KEY = "redditview.settings.v1";
@@ -9,7 +10,6 @@
   var FAV_KEY = "redditview.favourites.v1";
   var SEEN_KEY = "redditview.seen.v1";
   var DIAG_KEY = "redditview.diagnostics.v1";
-  var RG_KEY = "redditview.redgifs.v1";
   var OAUTH_KEY = "redditview.oauth.v1";
   var MAX_FEEDS = 40, MAX_FAVOURITES = 2000, MAX_SEEN = 8000;
 
@@ -367,7 +367,7 @@
     if (!id) return [];
     var base = {
       name: String(d.title || "Untitled").slice(0, 300), seriesName: "r/" + String(d.subreddit || ""), author: String(d.author || ""),
-      link: "https://www.reddit.com" + String(d.permalink || ""), nsfw: !!d.over_18
+      link: "https://www.reddit.com" + String(d.permalink || ""), nsfw: !!d.over_18, at: Date.now()
     };
     function item(suffix, type, media, w, h, duration, audio, thumb) {
       return Object.assign({}, base, {
@@ -384,14 +384,21 @@
     var m;
 
     if (rv && (http(rv.hls_url) || http(rv.fallback_url))) {
-      var silent = !!rv.is_gif || rv.has_audio === false || !http(rv.hls_url);
-      var media = silent && http(rv.fallback_url) ? { kind: "mp4", url: rv.fallback_url } : { kind: "hls", url: rv.hls_url, alt: http(rv.fallback_url) };
-      return [item("", rv.is_gif ? "gif" : "video", media, rv.width || pvw, rv.height || pvh, rv.duration, !silent, thumb)];
+      // Reddit keeps sound only in its HLS stream (and in a separate DASH audio
+      // file); its plain MP4 is always silent. So anything that may have sound
+      // plays as HLS first. Only a post Reddit marks as a GIF without sound
+      // goes straight to the plain file.
+      var silent = !!rv.is_gif && rv.has_audio !== true;
+      var media = !http(rv.hls_url) || (silent && http(rv.fallback_url)) ? { kind: "mp4", url: http(rv.fallback_url) || rv.hls_url } :
+        { kind: "hls", url: rv.hls_url, alt: http(rv.fallback_url), dash: http(rv.dash_url) };
+      return [item("", rv.is_gif ? "gif" : "video", media, rv.width || pvw, rv.height || pvh, rv.duration, !silent && rv.has_audio !== false, thumb)];
     }
     if ((m = /redgifs\.com\/(?:watch|ifr|i)\/([A-Za-z0-9]+)/i.exec(url))) {
       var oe = s.secure_media && s.secure_media.oembed || s.media && s.media.oembed || {};
       var alt = rvp && http(rvp.fallback_url) || "";
-      return [item("", "gif", { kind: "redgifs", rg: m[1].toLowerCase(), alt: alt },
+      // Reddit's copy of the clip's poster image carries the clip's file name.
+      var named = /redgifs\.com\/([A-Z][A-Za-z0-9]{4,80})(?:-[A-Za-z]+)?\.(?:jpe?g|png|webp|mp4)/.exec(JSON.stringify([oe, s.preview || null, s.thumbnail || ""]));
+      return [item("", "gif", { kind: "redgifs", rg: m[1].toLowerCase(), name: named ? named[1] : "", alt: alt },
         rvp && rvp.width || pvw || oe.width, rvp && rvp.height || pvh || oe.height, rvp && rvp.duration, false, thumb || http(oe.thumbnail_url))];
     }
     if ((m = /^https?:\/\/(?:i\.|m\.|www\.)?imgur\.com\/([A-Za-z0-9]{5,10})\.(?:gifv|mp4|gif)\b/i.exec(url))) {
@@ -606,88 +613,111 @@
   function clearSeen() { seen = new Set(); seenList = []; write(SEEN_KEY, null); }
 
   // ---------- media addresses ----------
-  // Reddit-hosted media is addressed directly. Redgifs links are short-lived,
-  // so each one is looked up when it is about to play.
-  var rg = read(RG_KEY), rgJob = null, rgCache = new Map();
-  if (!rg || typeof rg.token !== "string" || !(rg.exp > Date.now())) rg = null;
-  function rgToken(force) {
-    if (!force && rg && rg.exp > Date.now()) return Promise.resolve(rg.token);
-    if (rgJob) return rgJob;
-    rgJob = root.fetch("https://api.redgifs.com/v2/auth/temporary", { mode: "cors", credentials: "omit", cache: "no-store" }).then(function (response) {
-      if (!response.ok) throw ApiError("Redgifs did not issue a viewing token (HTTP " + response.status + ").", 502, "REDGIFS");
-      return response.json();
-    }).then(function (data) {
-      if (!data || typeof data.token !== "string") throw ApiError("Redgifs did not issue a viewing token.", 502, "REDGIFS");
-      rg = { token: data.token, exp: Date.now() + 12 * 3600000 }; write(RG_KEY, rg);
-      return rg.token;
-    });
-    rgJob.then(function () { rgJob = null; }, function () { rgJob = null; });
-    return rgJob;
-  }
-  // If Redgifs cannot be reached at all from this browser, stop asking for a
-  // while and use Reddit's own previews instead.
-  var rgFailures = 0, rgPausedUntil = 0;
-  async function rgResolve(id) {
-    var cached = rgCache.get(id);
-    if (cached && cached.exp > Date.now()) return cached.value;
-    if (rgPausedUntil > Date.now()) throw ApiError("Redgifs could not be reached.", 502, "REDGIFS");
-    try {
-      var value = await rgLookup(id);
-      rgFailures = 0;
-      return value;
-    } catch (error) {
-      if (error.code === "REDGIFS" && ++rgFailures >= 3) { rgFailures = 0; rgPausedUntil = Date.now() + 10 * 60000; }
-      throw error;
-    }
-  }
-  async function rgLookup(id) {
-    for (var attempt = 0; ; attempt++) {
-      var token, response;
-      try { token = await rgToken(attempt > 0); }
-      catch (error) { throw error.code ? error : ApiError("Redgifs could not be reached.", 502, "REDGIFS"); }
-      try {
-        response = await root.fetch("https://api.redgifs.com/v2/gifs/" + encodeURIComponent(id), {
-          mode: "cors", credentials: "omit", cache: "no-store", headers: { Authorization: "Bearer " + token }
-        });
-      } catch (_) { throw ApiError("Redgifs could not be reached.", 502, "REDGIFS"); }
-      if (response.status === 401 && attempt === 0) continue;
-      if (response.status === 404 || response.status === 410) throw ApiError("This Redgifs clip has been removed.", 404, "REDGIFS_GONE");
-      if (!response.ok) throw ApiError("Redgifs returned an error (HTTP " + response.status + ").", 502, "REDGIFS");
-      var data = await response.json(), gif = data && data.gif, urls = gif && gif.urls || {};
-      var url = http(urls.hd) || http(urls.sd);
-      if (!url) throw ApiError("Redgifs returned no playable file for this clip.", 502, "REDGIFS");
-      var value = {
-        kind: /\.(?:jpe?g|png|webp)(?:\?|$)/i.test(url) ? "img" : "mp4", url: url,
-        w: Number(gif.width) || 0, h: Number(gif.height) || 0, duration: Number(gif.duration) || 0, audio: !!gif.hasAudio
-      };
-      if (rgCache.size > 300) rgCache.delete(rgCache.keys().next().value);
-      rgCache.set(id, { value: value, exp: Date.now() + 20 * 60000 });
-      return value;
-    }
-  }
+  // resolve() turns a post into a list of sources to try in order, those that
+  // can carry sound first and Reddit's silent copies last:
+  //   { kind: "hls"|"mp4"|"img", url, dash?: address of Reddit's DASH playlist,
+  //     used to find the separate sound file for its silent MP4 }
   function validMedia(media) {
     return !!(media && (media.kind === "redgifs" ? /^[a-z0-9]{3,80}$/.test(media.rg || "") : ["hls", "mp4", "img"].indexOf(media.kind) >= 0 && http(media.url)));
   }
-  // Returns the source at once when no lookup is needed, so play() can stay
+  function redditSources(media) {
+    if (media.kind !== "hls") return [{ kind: media.kind, url: media.url }].concat(http(media.alt) ? [{ kind: "mp4", url: media.alt }] : []);
+    var out = [{ kind: "hls", url: media.url }];
+    // If the HLS stream will not play, Reddit's MP4 with its sound file alongside.
+    if (http(media.alt)) out.push({ kind: "mp4", url: media.alt, dash: http(media.dash) || media.alt.replace(/\/[^\/]*$/, "/DASHPlaylist.mpd") });
+    return out;
+  }
+  // Reddit's video links carry a token that expires, so a post saved some
+  // time ago (a restored pane, a favourite) is looked up again before playing.
+  var STALE = 40 * 60000;
+  async function fresh(item) {
+    if (item.media.kind !== "hls" || Date.now() - (item.at || 0) < STALE) return item;
+    try {
+      var data = await redditGet("api/info", { id: "t3_" + item.id.replace(/_\d+$/, "") });
+      var children = data && data.data && data.data.children || [];
+      var found = null;
+      children.forEach(function (child) { extract(child).forEach(function (it) { if (it.id === item.id) found = it; }); });
+      if (found && validMedia(found.media)) { item.media = found.media; item.at = found.at; remember(found); }
+    } catch (_) { /* try the saved address */ }
+    return item;
+  }
+  // Returns the sources at once when no lookup is needed, so play() can stay
   // inside the tap that asked for it; otherwise null (use resolve()).
   function resolveSync(item) {
     var media = item && item.media;
     if (!validMedia(media)) throw ApiError("This post has no playable media.", 415, "NO_MEDIA");
-    if (media.kind === "redgifs") return null;
-    return { kind: media.kind, url: media.url, alt: http(media.alt) };
+    if (media.kind === "redgifs" || (media.kind === "hls" && Date.now() - (item.at || 0) >= STALE)) return null;
+    return { sources: redditSources(media) };
+  }
+  var rgCache = new Map(), rgPausedUntil = 0, rgFailures = 0;
+  async function redgifs(id) {
+    var cached = rgCache.get(id);
+    if (cached && cached.exp > Date.now()) return cached.value;
+    if (rgPausedUntil > Date.now()) throw ApiError("Redgifs lookups are paused.", 502, "REDGIFS");
+    var response;
+    try { response = await root.fetch("api/redgifs/" + encodeURIComponent(id), { credentials: "same-origin", cache: "no-store" }); }
+    catch (_) { response = null; }
+    if (response && (response.status === 404 || response.status === 410)) throw ApiError("This Redgifs clip has been removed.", 404, "REDGIFS_GONE");
+    var data = null;
+    if (response && response.ok) { try { data = await response.json(); } catch (_) { data = null; } }
+    if (!data || !(http(data.hd) || http(data.sd))) {
+      if (++rgFailures >= 4) { rgFailures = 0; rgPausedUntil = Date.now() + 5 * 60000; }
+      recordDiagnostic({ time: new Date().toISOString(), endpoint: "/api/redgifs/" + id + " (this app's Redgifs lookup)", status: response ? response.status : "network",
+        body: "", access: "redgifs", requestsInFlight: inFlight, attempt: 1, retried: false });
+      throw ApiError("Redgifs could not be reached.", 502, "REDGIFS");
+    }
+    rgFailures = 0;
+    if (rgCache.size > 300) rgCache.delete(rgCache.keys().next().value);
+    rgCache.set(id, { value: data, exp: Date.now() + 15 * 60000 });
+    return data;
   }
   async function resolve(item) {
     var now = resolveSync(item);
     if (now) return now;
     var media = item.media;
+    if (media.kind === "hls") { await fresh(item); return { sources: redditSources(item.media) }; }
+    var sources = [], extra = {};
     try {
-      var found = await rgResolve(media.rg);
-      return { kind: found.kind, url: found.url, alt: http(media.alt), w: found.w, h: found.h, duration: found.duration, audio: found.audio };
+      var found = await redgifs(media.rg);
+      [found.hd, found.sd].forEach(function (u) { if (http(u)) sources.push({ kind: /\.(?:jpe?g|png|webp)(?:\?|$)/i.test(u) ? "img" : "mp4", url: u }); });
+      extra = { w: Number(found.width) || 0, h: Number(found.height) || 0, duration: Number(found.duration) || 0, audio: !!found.hasAudio };
     } catch (error) {
-      // Reddit keeps its own silent preview of most Redgifs clips.
-      if (http(media.alt) && error.code !== "REDGIFS_GONE") return { kind: "mp4", url: media.alt, alt: "" };
-      throw error;
+      if (error.code === "REDGIFS_GONE") throw error;
     }
+    // Redgifs serves a clip's files under its name, which Reddit's copy of the
+    // poster gives away. Reddit's own copy of the clip (always silent) comes last.
+    if (/^[A-Za-z0-9]{5,80}$/.test(media.name || "")) {
+      sources.push({ kind: "mp4", url: "https://media.redgifs.com/" + media.name + ".mp4" }, { kind: "mp4", url: "https://media.redgifs.com/" + media.name + "-mobile.mp4" });
+    }
+    if (http(media.alt)) sources.push({ kind: "mp4", url: media.alt });
+    sources = sources.filter(function (src, n) { return sources.findIndex(function (o) { return o.url === src.url; }) === n; });
+    if (!sources.length) throw ApiError("Redgifs could not be reached for this clip.", 502, "REDGIFS");
+    return Object.assign({ sources: sources }, extra);
+  }
+  // The sound file that goes with Reddit's silent MP4: named in the DASH
+  // playlist, with Reddit's usual names as a fallback.
+  async function dashAudio(dashUrl, videoUrl) {
+    var base = String(videoUrl || dashUrl).replace(/[?#].*$/, "").replace(/\/[^\/]*$/, "/"), found = [];
+    try {
+      var response = await root.fetch(dashUrl, { mode: "cors", credentials: "omit", cache: "no-store" });
+      if (response.ok) {
+        var mpd = await response.text();
+        (mpd.match(/<AdaptationSet[\s\S]*?<\/AdaptationSet>/g) || []).forEach(function (set) {
+          if (!/contentType="audio"|mimeType="audio/.test(set)) return;
+          (set.match(/<BaseURL>([^<]+)<\/BaseURL>/g) || []).forEach(function (b) { found.push(b.replace(/<\/?BaseURL>/g, "").trim()); });
+        });
+      }
+    } catch (_) { /* use the usual names */ }
+    found.reverse(); // Reddit lists the best quality last
+    return found.concat(["CMAF_AUDIO_128.mp4", "DASH_AUDIO_128.mp4", "CMAF_AUDIO_64.mp4", "DASH_AUDIO_64.mp4", "DASH_audio.mp4", "audio"])
+      .map(function (name) { try { return new URL(name.replace(/&amp;/g, "&"), base).href; } catch (_) { return ""; } })
+      .filter(function (u, n, all) { return http(u) && all.indexOf(u) === n; });
+  }
+  // Media that failed to play goes into the error log, so it can be reported.
+  function mediaFailed(item, source, message) {
+    var host = ""; try { host = new URL(source.url).host; } catch (_) {}
+    recordDiagnostic({ time: new Date().toISOString(), endpoint: "media " + source.kind + " from " + host + " (" + (item && item.id) + ")", status: "media",
+      body: String(message || "").slice(0, 200), access: "media", requestsInFlight: inFlight, attempt: 1, retried: false });
   }
 
   // ---------- status ----------
@@ -745,7 +775,7 @@
   }
 
   root.TVLocal = {
-    api: api, resolve: resolve, resolveSync: resolveSync, markSeen: markSeen, clearSeen: clearSeen,
+    api: api, resolve: resolve, resolveSync: resolveSync, dashAudio: dashAudio, mediaFailed: mediaFailed, markSeen: markSeen, clearSeen: clearSeen,
     seenCount: function () { return seen.size; },
     configured: configured, status: status, saveSettings: saveSettings,
     feedsText: function () { return settings.feeds.map(feedLine).join("\n"); },

@@ -8,9 +8,12 @@ It is built from [Triple View](https://github.com/darw00d/Triple-view) and keeps
 its interface, layouts, audio controls and hosting. The Emby library is replaced
 by Reddit.
 
-Like Triple View it is **self-contained**: plain HTML, CSS and JavaScript with
-no server and no build step. The browser talks to Reddit directly. Any static
-host can serve the `public/` folder.
+Like Triple View it is plain HTML, CSS and JavaScript with no build step, and
+the browser talks to Reddit directly. One small exception: Redgifs only
+answers requests from its own website, so the Cloudflare Worker in `worker/`
+looks Redgifs clips up on the page's behalf (`/api/redgifs/<id>`). Without it
+(on a plain static host) Redgifs clips still play from their own files when
+Reddit gives away the file name, or else from Reddit's silent copy.
 
 ## Features
 
@@ -49,6 +52,13 @@ New for Reddit:
 - **Shuffle** mixes hot, new and top posts from each feed and keeps reaching
   further back while you watch. **Unseen** limits it to posts that have not yet
   played on this device.
+- **Sound**: Reddit keeps a video's sound only in its HLS stream and in a
+  separate sound file; its plain MP4 is silent. Videos play from HLS. If that
+  fails, the app plays the MP4 with the sound file alongside, kept in step.
+  Reddit's video links expire, so a post saved a while ago (a restored pane, a
+  favourite) is looked up again before it plays. Reddit's own silent copies
+  are only used when nothing with sound will play. Each source that fails is
+  listed in Help → error log.
 - Posts whose media has been removed are skipped automatically.
 - **Post info** (the i button): title, subreddit, author and a link to the post.
 
@@ -127,4 +137,5 @@ favourites and seen posts against a stand-in for Reddit.
 | `public/playback.js` | Player adapter; loads hls.js only for Reddit video with sound on browsers without built-in HLS |
 | `public/vendor/hls.min.js` | hls.js 1.7.3 (Apache-2.0) |
 | `public/sw.js` | Offline shell cache (never caches Reddit data or media) |
+| `worker/index.js`, `worker/redgifs.js` | Cloudflare Worker: serves `public/` and the Redgifs lookup at `/api/redgifs/<id>` (answers only the app's own pages) |
 | `public/config.js` | Optional default feeds and app ID |

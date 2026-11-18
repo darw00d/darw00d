@@ -45,10 +45,37 @@ test("feeds: subreddits, lists, custom feeds, labels", () => {
 test("posts: Reddit video with sound plays as HLS", () => {
   const [it] = load().extract(post({ is_video: true, secure_media: { reddit_video: { hls_url: "https://v.redd.it/x/HLSPlaylist.m3u8", fallback_url: "https://v.redd.it/x/DASH_720.mp4", width: 1280, height: 720, duration: 31, is_gif: false, has_audio: true } }, preview: preview(1280, 720) }));
   assert.strictEqual(it.type, "video");
-  eq({ ...it.media }, { kind: "hls", url: "https://v.redd.it/x/HLSPlaylist.m3u8", alt: "https://v.redd.it/x/DASH_720.mp4" });
+  eq({ ...it.media }, { kind: "hls", url: "https://v.redd.it/x/HLSPlaylist.m3u8", alt: "https://v.redd.it/x/DASH_720.mp4", dash: "" });
+  // Sound first: HLS, then Reddit's silent MP4 with its separate sound file.
+  eq(load().resolveSync(it).sources, [
+    { kind: "hls", url: "https://v.redd.it/x/HLSPlaylist.m3u8" },
+    { kind: "mp4", url: "https://v.redd.it/x/DASH_720.mp4", dash: "https://v.redd.it/x/DASHPlaylist.mpd" }
+  ]);
   eq([it.w, it.h, it.duration, it.audio], [1280, 720, 31, true]);
   assert.strictEqual(it.imageUrl, "https://preview.redd.it/small.jpg?s=2");
   assert.strictEqual(it.link, "https://www.reddit.com/r/pics/comments/abc123/a_post/");
+});
+
+test("posts: a Reddit video without has_audio still plays as HLS", () => {
+  const [it] = load().extract(post({ is_video: true, secure_media: { reddit_video: { hls_url: "https://v.redd.it/z/HLSPlaylist.m3u8?a=1", fallback_url: "https://v.redd.it/z/CMAF_720.mp4?source=fallback", dash_url: "https://v.redd.it/z/DASHPlaylist.mpd?a=1", width: 720, height: 1280, duration: 9, is_gif: false } } }));
+  assert.strictEqual(it.media.kind, "hls");
+  assert.strictEqual(it.audio, true);
+  assert.strictEqual(load().resolveSync(it).sources[1].dash, "https://v.redd.it/z/DASHPlaylist.mpd?a=1");
+});
+
+test("posts: a GIF that Reddit says has sound plays as HLS", () => {
+  const [it] = load().extract(post({ is_video: true, secure_media: { reddit_video: { hls_url: "https://v.redd.it/g/HLSPlaylist.m3u8", fallback_url: "https://v.redd.it/g/DASH_480.mp4", width: 480, height: 480, duration: 5, is_gif: true, has_audio: true } } }));
+  assert.strictEqual(it.media.kind, "hls");
+});
+
+test("sound file: read from the DASH playlist, best first, usual names after", async () => {
+  const mpd = `<MPD><Period><AdaptationSet contentType="video"><Representation><BaseURL>CMAF_720.mp4</BaseURL></Representation></AdaptationSet>
+    <AdaptationSet contentType="audio" mimeType="audio/mp4"><Representation bandwidth="64000"><BaseURL>CMAF_AUDIO_64.mp4</BaseURL></Representation><Representation bandwidth="128000"><BaseURL>CMAF_AUDIO_128.mp4</BaseURL></Representation></AdaptationSet></Period></MPD>`;
+  const L = load(async () => ({ ok: true, text: async () => mpd }));
+  const urls = await L.dashAudio("https://v.redd.it/q/DASHPlaylist.mpd?a=1", "https://v.redd.it/q/CMAF_720.mp4?source=fallback");
+  eq(urls.slice(0, 3), ["https://v.redd.it/q/CMAF_AUDIO_128.mp4", "https://v.redd.it/q/CMAF_AUDIO_64.mp4", "https://v.redd.it/q/DASH_AUDIO_128.mp4"]);
+  const offline = await load().dashAudio("https://v.redd.it/q/DASHPlaylist.mpd", "https://v.redd.it/q/DASH_480.mp4");
+  assert.strictEqual(offline[0], "https://v.redd.it/q/CMAF_AUDIO_128.mp4");
 });
 
 test("posts: silent Reddit GIF plays as a plain file", () => {
@@ -60,8 +87,8 @@ test("posts: silent Reddit GIF plays as a plain file", () => {
 
 test("posts: Redgifs, Imgur, images, galleries, crossposts", () => {
   const L = load();
-  const [rg] = L.extract(post({ url: "https://www.redgifs.com/watch/SomeClipName", preview: preview(1080, 1920, { reddit_video_preview: { fallback_url: "https://v.redd.it/p/DASH_480.mp4", width: 480, height: 854, duration: 12 } }) }));
-  eq({ ...rg.media }, { kind: "redgifs", rg: "someclipname", alt: "https://v.redd.it/p/DASH_480.mp4" });
+  const [rg] = L.extract(post({ url: "https://www.redgifs.com/watch/someclipname", secure_media: { oembed: { thumbnail_url: "https://media.redgifs.com/SomeClipName-poster.jpg" } }, preview: preview(1080, 1920, { reddit_video_preview: { fallback_url: "https://v.redd.it/p/DASH_480.mp4", width: 480, height: 854, duration: 12 } }) }));
+  eq({ ...rg.media }, { kind: "redgifs", rg: "someclipname", name: "SomeClipName", alt: "https://v.redd.it/p/DASH_480.mp4" });
   const [im] = L.extract(post({ url: "https://i.imgur.com/AbCd123.gifv" }));
   assert.strictEqual(im.media.url, "https://i.imgur.com/AbCd123.mp4");
   const [img] = L.extract(post({ post_hint: "image", url: "https://i.redd.it/abc.jpg", preview: preview(2000, 1000) }));
@@ -113,4 +140,20 @@ test("listing: pages, type filter, shuffle, favourites and seen", async () => {
   L.markSeen(id);
   const unseen = await L.api("/api/items?sort=random&seed=seed-one-1&unplayed=true&startIndex=0&limit=100");
   assert.ok(!unseen.items.some((i) => i.id === id));
+});
+
+test("redgifs: app lookup first, then the clip's own files, Reddit's silent copy last", async () => {
+  const media = { kind: "redgifs", rg: "someclipname", name: "SomeClipName", alt: "https://v.redd.it/p/DASH_480.mp4" };
+  const ok = load(async (url) => {
+    assert.strictEqual(url, "api/redgifs/someclipname");
+    return { ok: true, status: 200, json: async () => ({ hd: "https://media.redgifs.com/SomeClipName.mp4", sd: "https://media.redgifs.com/SomeClipName-mobile.mp4", width: 1080, height: 1920, duration: 12, hasAudio: true }) };
+  });
+  const a = await ok.resolve({ id: "x", media });
+  eq(a.sources.map((s) => s.url), ["https://media.redgifs.com/SomeClipName.mp4", "https://media.redgifs.com/SomeClipName-mobile.mp4", "https://v.redd.it/p/DASH_480.mp4"]);
+  assert.strictEqual(a.audio, true);
+  const down = load(async () => ({ ok: false, status: 502, json: async () => ({}) }));
+  const b = await down.resolve({ id: "x", media });
+  eq(b.sources.map((s) => s.url), ["https://media.redgifs.com/SomeClipName.mp4", "https://media.redgifs.com/SomeClipName-mobile.mp4", "https://v.redd.it/p/DASH_480.mp4"]);
+  const gone = load(async () => ({ ok: false, status: 404, json: async () => ({ gone: true }) }));
+  await assert.rejects(gone.resolve({ id: "x", media }), /removed/);
 });
